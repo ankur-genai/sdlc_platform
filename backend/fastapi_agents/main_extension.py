@@ -2011,10 +2011,13 @@ class MCPIntegration(_Base):
     updated_at: _Mapped[_dt] = _mc(_SADt(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
 
-# Create table if it doesn't exist yet (idempotent)
+# Create table if it doesn't exist yet (idempotent, resilient startup)
 from .models import engine as _engine
 
-_Base.metadata.create_all(bind=_engine, tables=[MCPIntegration.__table__])
+try:
+    _Base.metadata.create_all(bind=_engine, tables=[MCPIntegration.__table__])
+except Exception as _e:
+    logger.warning(f"Could not auto-create MCPIntegration table on startup: {_e}")
 
 
 class MCPIntegrationOut(_BaseModel):
