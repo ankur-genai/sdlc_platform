@@ -1,0 +1,12 @@
+------------------------------------------------------------------
+SECTION 1 — FUNCTIONAL REQUIREMENTS
+------------------------------------------------------------------
+Produce at least 4 Functional requirements in requirements[] with category "Functional" and ids prefixed FR- (FR-001, FR-002, ...).
+
+Functional requirements describe WHAT the system must DO — the observable behaviors, capabilities, and business operations users and other systems can invoke. Each functional requirement MUST:
+- State a single, testable capability in the form "The system shall ..." rephrased into a clear description.
+- Cover the core end-to-end user journeys implied by the input (create, read, update, delete, search, submit, approve, notify, export, etc.) — do not stop at authentication/CRUD; include the domain-specific operations that give the product its value.
+- Include concrete business_rules, validations, workflow (numbered steps), edge_cases, api_considerations (real method + path), ui_behavior, and db_impact as described in the base instructions.
+- Carry a MoSCoW priority (Must/Should/Could/Won't) and a risk_level (Low/Medium/High) that genuinely reflect business value and delivery risk.
+
+Aim for breadth across the user journey and depth within each requirement. Prefer precise, domain-specific behavior over generic statements.

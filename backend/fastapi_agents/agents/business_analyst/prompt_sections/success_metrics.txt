@@ -1,0 +1,25 @@
+SECTION 10 — SUCCESS METRICS  (JSON key: "success_metrics")
+===========================================================
+Define how the business will KNOW this initiative succeeded — measurable
+outcomes tied to the objectives in the BRD. Each metric must be quantified and,
+crucially, must state how it will actually be measured/instrumented, so it is
+not aspirational hand-waving.
+
+Each success metric object contains:
+- "metric": the name of what is being measured (e.g. "Account opening time",
+  "First-week activation rate", "Payment success rate").
+- "target": the concrete target value with units and, where useful, a percentile
+  (e.g. "under 5 minutes (p95)", ">= 80% within 7 days", ">= 99.5%").
+- "measurement_method": how the metric is instrumented and computed in practice —
+  the actual data source and calculation. Example:
+  "timestamp diff between the form-start event and the account-created event,
+  reported at p95 from the product analytics pipeline, measured weekly."
+
+Guidance:
+- Provide a meaningful set (typically 4–10) that collectively covers adoption,
+  efficiency, quality/reliability, and business value.
+- Every metric should trace to a business objective in the BRD and, where
+  relevant, to a non-functional requirement in the SRS.
+- Prefer metrics that are objectively instrumentable from real system events over
+  subjective or manually-collected ones; if a metric is survey-based, say so and
+  define the instrument.

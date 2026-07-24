@@ -1,0 +1,38 @@
+------------------------------------------------------------------
+OUTPUT FORMAT — return EXACTLY this JSON shape and nothing else
+------------------------------------------------------------------
+Fill every field with real content. Empty arrays are only acceptable for a
+per-requirement optional detail field that genuinely does not apply to that
+specific requirement — the six mandatory coverage areas must always be populated.
+
+{
+  "requirements": [
+    {
+      "id": "FR-001",
+      "description": "string",
+      "category": "Functional",
+      "priority": "Must",
+      "risk_level": "Low",
+      "business_rules": ["string"],
+      "edge_cases": ["string"],
+      "validations": ["string"],
+      "workflow": ["1. string", "2. string"],
+      "acceptance_criteria": [{"given": "string", "when": "string", "then": "string"}],
+      "api_considerations": {
+        "endpoints": [{"method": "POST", "path": "/api/v1/...", "desc": "string", "success": "string", "errors": "string"}],
+        "notes": ["string"]
+      },
+      "ui_behavior": ["string"],
+      "db_impact": {"primary_table": "string", "columns_touched": ["string"], "notes": ["string"]},
+      "dependencies": ["string"],
+      "constraints": ["string"],
+      "nfr_targets": {"metric_name": "target value"},
+      "assumptions": ["string"]
+    }
+  ],
+  "risks": ["string"],
+  "dependencies": ["string"],
+  "user_roles": [{"name": "string", "description": "string", "permissions": ["string"]}],
+  "traceability": [{"requirement_id": "FR-001", "business_goal": "string", "source": "string", "related_requirements": ["string"]}],
+  "error_scenarios": [{"requirement_id": "FR-001", "scenario": "string", "expected_behavior": "string"}]
+}

@@ -1,0 +1,49 @@
+SECTION 3 — SOFTWARE REQUIREMENTS SPECIFICATION  (JSON key: "srs")
+=================================================================
+Produce a FULL Software Requirements Specification as a single markdown-formatted
+string (escape newlines for JSON). This is the system-level "how" companion to
+the business-level BRD. It must be detailed enough for a solution architect and
+developers to design against. Use `##`/`###` headings and markdown tables.
+
+Include, at minimum, every section below, in this order:
+
+## 1. System Overview
+   Purpose, scope, high-level context (actors, major subsystems, external
+   systems), and the overall solution shape implied by the requirements.
+
+## 2. Functional Requirements
+   Each functional requirement gets a stable ID (FR-001, FR-002 …) and is TRACED
+   back to the epics/user stories and to the BRD business requirements. Use a
+   traceability table with columns:
+     FR ID | Functional Requirement | Related Story ID(s) | Related BR ID(s)
+   Requirements must be atomic, unambiguous, and verifiable.
+
+## 3. Non-Functional Requirements (NFRs)
+   Concrete, MEASURED targets — never "fast" or "secure" without numbers. Cover:
+   ### Performance   — e.g. p95 API latency < 300 ms; page load < 2 s;
+                       throughput of N requests/sec.
+   ### Scalability   — target concurrent users; horizontal scaling expectations;
+                       data-volume growth assumptions.
+   ### Availability & Reliability — uptime target (e.g. 99.9%); RTO/RPO;
+                       degradation behaviour.
+   ### Security      — authN/authZ model, encryption in transit/at rest,
+                       session/timeout policy, audit-logging expectations.
+   ### Usability & Accessibility — accessibility standard (e.g. WCAG 2.1 AA),
+                       supported browsers/devices, localisation needs.
+   ### Maintainability & Observability — logging, monitoring, alerting, and
+                       supportability expectations.
+   Present NFRs in a table: NFR ID | Category | Requirement | Target/Threshold.
+
+## 4. External Interface Requirements
+   ### User Interfaces  — key screens/flows and UI-level constraints.
+   ### System / API Interfaces — external systems, integration style
+        (REST/webhook/batch), data formats, auth.
+   ### Hardware / Software Interfaces — where relevant to the domain.
+
+## 5. Data Requirements
+   Core data entities, key attributes, ownership, retention/archival rules,
+   data-quality expectations, and any regulatory data-handling requirements
+   (e.g. PII, PCI, HIPAA) implied by the domain.
+
+Consistency: every FR must trace to at least one story ID that exists in the
+epics section, and reuse the BR IDs defined in the BRD.

@@ -1,0 +1,26 @@
+SECTION 9 — RISK ANALYSIS  (JSON key: "risk_analysis")
+======================================================
+Identify the material BUSINESS and DELIVERY risks for this initiative — not only
+technical risks. Think like a delivery lead protecting the outcome: scope,
+adoption, regulatory/compliance, data, dependency, security, operational, and
+change-management risks all belong here where relevant.
+
+Each risk object contains:
+- "risk": a specific, concrete risk statement (cause -> potential impact), not a
+  generic category. Bad: "Security risk". Good: "Sensitive customer PII could be
+  exposed if role-based access controls are misconfigured during rollout."
+- "likelihood": EXACTLY one of: low, medium, high.
+- "impact": EXACTLY one of: low, medium, high, critical.
+- "mitigation": a concrete, actionable mitigation/response — what will be done to
+  reduce likelihood or impact, and (ideally) who owns it or when it happens.
+  Bad: "Be careful". Good: "Enforce least-privilege RBAC via automated policy
+  tests in CI, and run an access-control review before each production release."
+
+Guidance:
+- Provide a meaningful set (typically 5–12) spanning multiple risk categories,
+  not just technical ones.
+- Calibrate likelihood/impact honestly and consistently; reserve "critical"
+  impact for risks that threaten safety, legality, finances, or the viability of
+  the initiative.
+- Every risk must be grounded in the requirements/domain, and every mitigation
+  must be specific enough to be actionable and testable.

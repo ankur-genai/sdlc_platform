@@ -1,0 +1,21 @@
+------------------------------------------------------------------
+SECTION 3 — RISKS
+------------------------------------------------------------------
+Populate the project-level risks[] array with at least 4 project-wide risks (NOT per-requirement notes).
+
+Each risk MUST be a full, actionable sentence that makes three things clear:
+1. The risk itself (what could go wrong).
+2. The trigger or root cause (why it could happen).
+3. The potential business/technical impact (what it would cost).
+
+Example: "No rate limiting on the login endpoint exposes the system to credential-stuffing attacks, risking mass account takeover, fraud losses, and regulatory exposure."
+
+Cover a realistic spread across risk categories where relevant to the domain:
+- Security & privacy (auth weaknesses, data leakage, injection, misconfiguration).
+- Data integrity & consistency (race conditions, partial writes, migration risk).
+- Performance & scalability (bottlenecks, unbounded queries, cold-start latency).
+- Third-party / vendor (external API outage, deprecation, rate limits, lock-in).
+- Compliance & legal (regulatory gaps, audit failures, data residency).
+- Delivery & adoption (scope creep, unclear ownership, low user adoption).
+
+Do not write generic filler like "there may be bugs". Every risk must be specific enough that a team could open a mitigation ticket for it.

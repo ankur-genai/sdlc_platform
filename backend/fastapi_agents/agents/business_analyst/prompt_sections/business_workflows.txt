@@ -1,0 +1,24 @@
+SECTION 6 — BUSINESS WORKFLOWS  (JSON key: "business_workflows")
+===============================================================
+Provide HIGHER-LEVEL narrative descriptions of how the business operates
+end-to-end ACROSS process boundaries — how the individual process_flows connect,
+hand off, and depend on one another to deliver overall business value. This is
+deliberately distinct from Section 5:
+- process_flows = the step-by-step "how" of a SINGLE process.
+- business_workflows = the connective "big picture" narrative that shows how
+  multiple processes chain together over time and across actors/departments.
+
+Each entry is a STRING containing a well-formed narrative paragraph (or a few
+sentences) describing one cross-process workflow. For example:
+- How onboarding (account opening) feeds into first-transaction and into
+  ongoing servicing, and where handoffs between customer, back-office, and
+  compliance occur.
+- How an exception in one process (e.g. failed verification) triggers a
+  downstream remediation workflow.
+
+Guidance:
+- Provide 2–5 narratives covering the principal cross-cutting journeys.
+- Reference the named process_flows and personas so the reader can trace how the
+  pieces fit together.
+- Focus on sequencing, handoffs, decision authority, and value delivery — not on
+  UI or code detail.

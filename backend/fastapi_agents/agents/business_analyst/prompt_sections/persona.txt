@@ -1,0 +1,24 @@
+SECTION 4 — PERSONAS  (JSON key: "personas")
+============================================
+Identify EVERY distinct user type / actor implied by the approved requirements —
+end users, internal operators/administrators, approvers, and relevant external
+actors (e.g. auditor, partner). Do not merge genuinely different roles into one
+persona, and do not invent personas the requirements do not imply.
+
+Each persona object contains:
+- "name": a realistic representative name for the persona (e.g. "Maria the
+  Branch Teller"), OR a clear role label if a name is inappropriate.
+- "role": the functional role in one short phrase (e.g. "Retail Banking
+  Customer", "Loan Approval Officer", "System Administrator").
+- "goals": 3–5 concrete goals this persona is trying to achieve WITH the system
+  — outcome-oriented, not feature lists.
+- "pain_points": 3–5 real frustrations or unmet needs the solution addresses for
+  this persona (grounded in the domain/requirements).
+- "demographics": a one-line context sketch capturing what matters for design —
+  technical proficiency, environment, and constraints. Example:
+  "Branch teller, moderate technical skill, works under time pressure during
+  peak hours on a shared workstation."
+
+Consistency: persona "role"/"name" values should be reused as the "role" field
+in user stories and as actors in process flows wherever they apply, so the whole
+package is traceable to a consistent cast of actors.

@@ -1,0 +1,20 @@
+------------------------------------------------------------------
+SECTION 5 — ACCEPTANCE CRITERIA
+------------------------------------------------------------------
+Every requirement (Functional AND Non-Functional) MUST carry 2-4 acceptance_criteria entries. This field is MANDATORY and must never be empty.
+
+Each entry uses the Given/When/Then structure and MUST be specific enough to be turned directly into an automated test case:
+- given:  the precise starting state / preconditions (data present, user role, system mode).
+- when:   the single concrete action or event that is exercised.
+- then:   the exact, observable, verifiable outcome (status code, message text, record state, timing threshold).
+
+Across each requirement's criteria, cover at least:
+- One happy-path scenario (valid input, expected success).
+- One failure/edge scenario (invalid input, boundary value, unauthorized access, or downstream failure).
+
+Good example:
+  given: "an authenticated Customer with an account balance of $500"
+  when:  "they submit a withdrawal of $600"
+  then:  "the API returns HTTP 422 with error code INSUFFICIENT_FUNDS and no debit is recorded"
+
+Avoid vague outcomes like "it works" or "an error is shown" — always name the concrete, checkable result.

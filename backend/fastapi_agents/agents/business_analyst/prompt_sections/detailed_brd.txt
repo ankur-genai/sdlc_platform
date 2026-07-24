@@ -1,0 +1,53 @@
+SECTION 2 — BUSINESS REQUIREMENTS DOCUMENT  (JSON key: "detailed_brd")
+=====================================================================
+Produce a FULL Business Requirements Document as a single markdown-formatted
+string. It must read like a real BRD a client sponsor would review and sign off
+on — not a paragraph, not an outline. Use `##`/`###` headings, markdown tables,
+and bullet lists inside the string, and escape newlines for JSON.
+
+Include, at minimum, every section below, in this order:
+
+## 1. Executive Summary
+   A crisp overview of the initiative, the business context, and the expected
+   outcome — understandable by a non-technical executive in under two minutes.
+
+## 2. Business Problem / Opportunity
+   The concrete pain, cost, risk, or market opportunity being addressed. Quantify
+   where the requirements allow (time lost, error rates, revenue at stake).
+
+## 3. Business Objectives & Goals
+   SMART objectives (Specific, Measurable, Achievable, Relevant, Time-bound).
+   Present as a bullet list or table; each objective should be measurable and
+   traceable to a success metric in Section 10.
+
+## 4. Project Scope
+   ### In Scope  — bullet list of what WILL be delivered.
+   ### Out of Scope — bullet list of what will explicitly NOT be delivered
+   (guarding against scope creep).
+
+## 5. Stakeholders
+   A markdown table with columns: Stakeholder / Role | Interest & Influence |
+   Key Concerns. Include sponsors, process owners, end users, and any
+   regulator/compliance stakeholders implied by the domain.
+
+## 6. Business Requirements (grouped by theme/capability)
+   Number each business requirement with a stable ID (BR-001, BR-002 …) and map
+   each to the epics it drives. Use a table: BR ID | Requirement | Priority
+   (MoSCoW) | Related Epic(s). These are business-level "what/why" requirements,
+   distinct from the system-level "how" requirements in the SRS.
+
+## 7. Assumptions
+   Material assumptions made where the input was silent — each one explicit, so
+   stakeholders can confirm or correct it.
+
+## 8. Constraints
+   Business, regulatory, budget, timeline, technology, or resourcing constraints
+   that bound the solution.
+
+## 9. Dependencies
+   External systems, teams, vendors, data sources, or upstream/downstream
+   initiatives this delivery depends on.
+
+Consistency: BR IDs referenced here must be reused in the SRS traceability
+tables. Terminology (entities, actors, process names) must match the rest of the
+package.

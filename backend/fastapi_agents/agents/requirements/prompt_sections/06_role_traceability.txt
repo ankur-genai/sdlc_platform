@@ -1,0 +1,22 @@
+------------------------------------------------------------------
+SECTION 6 — USER ROLES & TRACEABILITY
+------------------------------------------------------------------
+
+USER ROLES (user_roles[]) — produce at least 2 distinct roles/personas:
+- Include at least one administrative/privileged role AND at least one end-user role. Add more (e.g. auditor, support agent, integration/service account) where the domain implies them.
+- Each role MUST have:
+  - name: the role/persona label.
+  - description: who they are and their primary goal in the system.
+  - permissions: 3+ concrete, specific capabilities and their limits (e.g. "Admin: create/edit/delete users; view the full audit log; override transaction limits up to $50,000; cannot delete audit records").
+- Permissions should collectively make the access-control model unambiguous — a developer should be able to build the authorization matrix from them.
+
+TRACEABILITY (traceability[]) — produce EXACTLY ONE entry for EVERY requirement id you generated (every FR-, NFR-, and CON-). Do not skip any.
+- requirement_id: the id being traced.
+- business_goal: the concrete business objective this requirement serves (answers "why do we need this?").
+- source: where it originated — "explicit user input" when stated directly, or "inferred (industry standard for <domain>)" when you added it via professional judgement.
+- related_requirements: other requirement ids it is tightly coupled to (answers "what breaks if we cut this?"). Use [] only when the requirement is genuinely standalone.
+
+ERROR SCENARIOS (error_scenarios[]) — provide at least one system-level failure mode per functional requirement:
+- requirement_id: the requirement the failure relates to.
+- scenario: the operational failure path (e.g. "upstream payment gateway times out", "database connection pool exhausted").
+- expected_behavior: how the system must respond (retry with backoff, graceful degradation, circuit breaker, user-facing error message, queued for later). These are operational failure paths — distinct from input/state edge_cases.

@@ -1,0 +1,14 @@
+------------------------------------------------------------------
+SECTION 4 — DEPENDENCIES
+------------------------------------------------------------------
+Populate the project-level dependencies[] array with at least 3 external or technical dependencies the delivery team must have available.
+
+Each dependency MUST be concrete enough that a team knows exactly what needs to be provisioned, integrated, or contracted. Consider:
+- Third-party APIs & SaaS (payment gateways, email/SMS providers, mapping, KYC, analytics).
+- Identity & access (OAuth2/OIDC provider, SSO, LDAP/Active Directory).
+- Infrastructure & platform (cloud provider + specific services, container runtime, CDN, load balancer).
+- Data stores & messaging (relational DB engine + version, cache, object storage, message queue/streaming platform).
+- Internal/upstream systems (existing services, data feeds, shared libraries).
+- Tooling & compliance (CI/CD, secrets manager, certificate authority, audit/logging pipeline).
+
+State each dependency with its role and any version/tier/SLA note where it matters (e.g. "Stripe API (v2024-06) for card payments and refunds — requires PCI-DSS SAQ-A scope"). Avoid vague entries like "a database".

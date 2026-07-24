@@ -1,0 +1,685 @@
+/**
+ * BusinessAnalystWorkspace.tsx
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Full Business Analyst workspace showing Epics, User Stories, Acceptance
+ * Criteria, Story Points, Priorities, MoSCoW classification, and Personas —
+ * all sourced from the real user_stories artifact (read-only; there is no
+ * backend endpoint to persist edits, so this view never claims to support them).
+ */
+import { useState, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import {
+  Briefcase,
+  FileText,
+  CheckCircle2,
+  AlertTriangle,
+  Users,
+  BarChart3,
+  RefreshCw,
+  Layers,
+  Target,
+  Zap,
+  FileJson,
+  FileType,
+  FileText as FileTextIcon,
+  File,
+} from 'lucide-react';
+import { Card, StatusBadge } from '../components/ui/Card';
+import { Accordion, AccordionItem, BulletList } from '../components/ui/Accordion';
+import { Markdown } from '../components/ui/Markdown';
+import { ApprovalBadge, ApprovalBanner } from '../components/ui/ApprovalStatus';
+import { StudioApprovalButton } from '../components/ui/StudioApprovalButton';
+import { RegenerateButton } from '../components/ui/RegenerateButton';
+import { useUnifiedArtifacts } from '../lib/useUnifiedArtifacts';
+import { getSelectedProjectId } from '../lib/projectContext';
+import { buildApiUrl } from '../lib/api';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface StoryRow {
+  id: string;
+  title: string;
+  epic: string;
+  role: string;
+  goal: string;
+  benefit: string;
+  priority: string;
+  moscow: string;
+  points: number;
+  status: string;
+  acceptanceCriteria: string[];
+}
+
+interface EpicSummary {
+  title: string;
+  description: string;
+  storyCount: number;
+  totalPoints: number;
+}
+
+interface Persona {
+  name: string;
+  role: string;
+  goals: string[];
+  painPoints: string[];
+  demographics: string;
+  /** True when derived client-side from story roles because the Business
+   *  Analyst agent didn't generate explicit personas — not agent output. */
+  isDerived?: boolean;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export function BusinessAnalystWorkspace() {
+  const [activeTab, setActiveTab] = useState<'stories' | 'epics' | 'personas' | 'brd-srs' | 'flows' | 'risks'>('stories');
+
+  const projectId = getSelectedProjectId();
+  const { loading, error, reload, getArtifact, getApprovalStatus } = useUnifiedArtifacts(projectId);
+  const approvalStatus = getApprovalStatus('user_stories');
+
+  const storiesArtifactData = getArtifact('user_stories');
+
+  const storiesData = useMemo(() => {
+    if (!storiesArtifactData) return {
+      epics: [], stories: [], personas: [], detailed_brd: '', srs: '',
+      process_flows: [], business_workflows: [], validation_rules: [],
+      exception_handling: [], risk_analysis: [], success_metrics: [],
+    };
+    const data = storiesArtifactData;
+    return {
+      epics: (data.epics as any[]) || [],
+      stories: (data.stories as any[]) || [],
+      personas: (data.personas as any[]) || [],
+      detailed_brd: (data.detailed_brd as string) || '',
+      srs: (data.srs as string) || '',
+      process_flows: (data.process_flows as any[]) || [],
+      business_workflows: (data.business_workflows as string[]) || [],
+      validation_rules: (data.validation_rules as string[]) || [],
+      exception_handling: (data.exception_handling as string[]) || [],
+      risk_analysis: (data.risk_analysis as any[]) || [],
+      success_metrics: (data.success_metrics as any[]) || [],
+    };
+  }, [storiesArtifactData]);
+
+  // Build story rows from epics + direct stories
+  const storyRows: StoryRow[] = useMemo(() => {
+    const fromEpics: StoryRow[] = (storiesData.epics || []).flatMap((e: any, idx: number) => {
+      const epicTitle = e?.title || e?.name || `Epic-${idx + 1}`;
+      const items = Array.isArray(e?.stories) ? e.stories : [];
+      return items.map((s: any, sIdx: number) => ({
+        id: String(s?.id ?? `US-${idx + 1}.${sIdx + 1}`),
+        title: String(s?.title ?? ''),
+        epic: String(s?.epic ?? epicTitle),
+        role: String(s?.role ?? ''),
+        goal: String(s?.goal ?? ''),
+        benefit: String(s?.benefit ?? ''),
+        priority: String(s?.priority ?? s?.moscowPriority ?? 'medium'),
+        moscow: String(s?.moscow ?? s?.moscowPriority ?? 'Should'),
+        points: Number(s?.points ?? 0),
+        status: String(s?.status ?? 'todo'),
+        acceptanceCriteria: Array.isArray(s?.acceptance_criteria)
+          ? s.acceptance_criteria.map((ac: any) => typeof ac === 'string' ? ac : ac?.description || '')
+          : [],
+      }));
+    });
+
+    const fromDirect: StoryRow[] = (storiesData.stories || []).map((s: any, idx: number) => ({
+      id: String(s?.id ?? `US-D${idx + 1}`),
+      title: String(s?.title ?? ''),
+      epic: String(s?.epic ?? ''),
+      role: String(s?.role ?? ''),
+      goal: String(s?.goal ?? ''),
+      benefit: String(s?.benefit ?? ''),
+      priority: String(s?.priority ?? s?.moscowPriority ?? 'medium'),
+      moscow: String(s?.moscow ?? s?.moscowPriority ?? 'Should'),
+      points: Number(s?.points ?? 0),
+      status: String(s?.status ?? 'todo'),
+      acceptanceCriteria: Array.isArray(s?.acceptance_criteria)
+        ? s.acceptance_criteria.map((ac: any) => typeof ac === 'string' ? ac : ac?.description || '')
+        : [],
+    }));
+
+    return [...fromEpics, ...fromDirect];
+  }, [storiesData]);
+
+  // Epic summaries
+  const epicSummaries: EpicSummary[] = useMemo(() => {
+    const map = new Map<string, { description: string; stories: StoryRow[] }>();
+    for (const s of storyRows) {
+      if (!map.has(s.epic)) map.set(s.epic, { description: '', stories: [] });
+      map.get(s.epic)!.stories.push(s);
+    }
+    // Also add epics from the data that may have no stories
+    for (const e of storiesData.epics || []) {
+      const title = e?.title || e?.name || '';
+      if (!map.has(title)) map.set(title, { description: e?.description || '', stories: [] });
+      else {
+        const existing = map.get(title)!;
+        if (!existing.description) existing.description = e?.description || '';
+      }
+    }
+    return Array.from(map.entries()).map(([title, val]) => ({
+      title,
+      description: val.description,
+      storyCount: val.stories.length,
+      totalPoints: val.stories.reduce((sum, s) => sum + s.points, 0),
+    }));
+  }, [storyRows, storiesData]);
+
+  // Personas
+  const personas: Persona[] = useMemo(() => {
+    const fromData: Persona[] = (storiesData.personas || []).map((p: any) => ({
+      name: String(p?.name ?? ''),
+      role: String(p?.role ?? ''),
+      goals: Array.isArray(p?.goals) ? p.goals.map(String) : p?.goal ? [String(p.goal)] : [],
+      painPoints: Array.isArray(p?.pain_points) ? p.pain_points.map(String) : Array.isArray(p?.painPoints) ? p.painPoints.map(String) : [],
+      demographics: String(p?.demographics ?? ''),
+    }));
+    // Derive a minimal stand-in from story roles if the agent didn't
+    // generate explicit personas — clearly marked isDerived so the UI can
+    // distinguish this from real agent output rather than presenting
+    // generic placeholder text as if it were generated insight.
+    if (fromData.length === 0) {
+      const roles = new Set(storyRows.map((s) => s.role).filter(Boolean));
+      return Array.from(roles).map((role) => ({
+        name: role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        role,
+        goals: [],
+        painPoints: [],
+        demographics: '',
+        isDerived: true,
+      }));
+    }
+    return fromData;
+  }, [storiesData, storyRows]);
+
+  // Metrics
+  const totalStories = storyRows.length;
+  const totalPoints = storyRows.reduce((s, r) => s + r.points, 0);
+  const moscowCounts = { Must: 0, Should: 0, Could: 0, 'Won\'t': 0 };
+  for (const s of storyRows) {
+    const m = s.moscow as keyof typeof moscowCounts;
+    if (m in moscowCounts) moscowCounts[m]++;
+  }
+  const completedStories = storyRows.filter((s) => s.status === 'done').length;
+
+  const noProject = !projectId;
+
+  const handleExport = async (format: 'json' | 'md' | 'pdf' | 'docx') => {
+    if (!projectId || !storiesArtifactData) return;
+try {
+      const url = buildApiUrl(`/documents/export-artifact?projectId=${projectId}&artifact_type=user_stories&format=${format}`);
+      const resp = await fetch(url, { credentials: 'include' });
+      if (!resp.ok) throw new Error('Export failed');
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `user_stories_${projectId}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      console.error('Export failed:', e);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Business Analyst Workspace</h1>
+          <p className="mt-1 text-sm text-text-muted">Epics, user stories, and requirements analysis</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <StatusBadge status="success">
+            <CheckCircle2 className="mr-1 h-3 w-3" />
+            {totalStories} Stories
+          </StatusBadge>
+          <StatusBadge status="info">
+            <BarChart3 className="mr-1 h-3 w-3" />
+            {totalPoints} Points
+          </StatusBadge>
+          <ApprovalBadge status={approvalStatus} />
+          <StudioApprovalButton projectId={projectId} artifactType="user_stories" label="Business Analysis" onApproved={reload} />
+          {projectId && (
+            <RegenerateButton projectId={projectId} agentName="Business Analyst Agent" onRegenerated={reload} />
+          )}
+          <button onClick={reload} className="btn-ghost text-sm" disabled={loading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => handleExport('json')} className="btn-ghost text-xs" title="Export JSON">
+              <FileJson className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={() => handleExport('md')} className="btn-ghost text-xs" title="Export Markdown">
+              <FileType className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={() => handleExport('pdf')} className="btn-ghost text-xs" title="Export PDF">
+              <FileTextIcon className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={() => handleExport('docx')} className="btn-ghost text-xs" title="Export DOCX">
+              <File className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <ApprovalBanner
+        status={approvalStatus}
+        note="Review the generated Business Analysis in this workspace, then approve Human Checkpoint 1 using the Approve button above."
+      />
+
+      {/* Error state */}
+      {error && (
+        <Card className="border-status-error/30 bg-status-error/5 text-sm text-status-error">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            {error}
+            <button onClick={reload} className="ml-auto underline hover:no-underline">Retry</button>
+          </div>
+        </Card>
+      )}
+
+      {noProject ? (
+        <Card className="py-10 text-center">
+          <AlertTriangle className="h-10 w-10 text-dark-border-light mx-auto mb-3" />
+          <p className="text-sm font-medium text-text-primary">No project selected</p>
+          <p className="text-xs text-text-muted mt-1">Select a project in the Dashboard to view business analysis.</p>
+        </Card>
+      ) : (
+        <>
+          {/* Metrics row */}
+          <div className="grid gap-3 md:grid-cols-5">
+            <Card className="text-center py-3">
+              <Layers className="h-5 w-5 text-ey-yellow mx-auto mb-1" />
+              <p className="text-xl font-bold text-text-primary">{epicSummaries.length}</p>
+              <p className="text-[10px] text-text-muted">Epics</p>
+            </Card>
+            <Card className="text-center py-3">
+              <FileText className="h-5 w-5 text-status-info mx-auto mb-1" />
+              <p className="text-xl font-bold text-text-primary">{totalStories}</p>
+              <p className="text-[10px] text-text-muted">User Stories</p>
+            </Card>
+            <Card className="text-center py-3">
+              <Target className="h-5 w-5 text-status-success mx-auto mb-1" />
+              <p className="text-xl font-bold text-status-success">{totalPoints}</p>
+              <p className="text-[10px] text-text-muted">Story Points</p>
+            </Card>
+            <Card className="text-center py-3">
+              <CheckCircle2 className="h-5 w-5 text-status-success mx-auto mb-1" />
+              <p className="text-xl font-bold text-status-success">{completedStories}/{totalStories}</p>
+              <p className="text-[10px] text-text-muted">Completed</p>
+            </Card>
+            <Card className="text-center py-3">
+              <Users className="h-5 w-5 text-status-warning mx-auto mb-1" />
+              <p className="text-xl font-bold text-text-primary">{personas.length}</p>
+              <p className="text-[10px] text-text-muted">Personas</p>
+            </Card>
+          </div>
+
+          {/* MoSCoW breakdown */}
+          <Card>
+            <div className="flex items-center gap-2 mb-3">
+              <BarChart3 className="h-4 w-4 text-ey-yellow" />
+              <h3 className="section-title mb-0">MoSCoW Classification</h3>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              {(['Must', 'Should', 'Could', "Won't"] as const).map((cat) => {
+                const count = moscowCounts[cat] || 0;
+                const pct = totalStories > 0 ? Math.round((count / totalStories) * 100) : 0;
+                const colors: Record<string, string> = {
+                  Must: 'bg-status-error text-status-error',
+                  Should: 'bg-status-warning text-status-warning',
+                  Could: 'bg-status-info text-status-info',
+                  "Won't": 'bg-text-muted text-text-muted',
+                };
+                return (
+                  <div key={cat} className="text-center">
+                    <div className={`text-xs font-semibold mb-1 ${colors[cat].split(' ')[1]}`}>{cat}</div>
+                    <div className="text-2xl font-bold text-text-primary">{count}</div>
+                    <div className="text-[10px] text-text-muted">{pct}%</div>
+                    <div className="mt-1 h-1.5 rounded-full bg-dark-border overflow-hidden">
+                      <div className={`h-full rounded-full ${colors[cat].split(' ')[0]}`} style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* Tabs */}
+          <div className="flex border-b border-dark-border">
+            {[
+              { id: 'stories', label: 'User Stories', icon: FileText },
+              { id: 'epics', label: 'Epics', icon: Layers },
+              { id: 'personas', label: 'Personas', icon: Users },
+              { id: 'brd-srs', label: 'BRD / SRS', icon: FileTextIcon },
+              { id: 'flows', label: 'Process Flows', icon: Zap },
+              { id: 'risks', label: 'Risk & Metrics', icon: AlertTriangle },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-ey-yellow text-ey-yellow'
+                    : 'border-transparent text-text-muted hover:text-text-primary'
+                }`}
+              >
+                <tab.icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Stories tab */}
+          {activeTab === 'stories' && (
+            <Card>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="section-title mb-0">User Stories</h3>
+                <span className="text-xs text-text-muted">{totalStories} stories</span>
+              </div>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="h-5 w-5 animate-spin text-ey-yellow" />
+                </div>
+              ) : storyRows.length === 0 ? (
+                <div className="py-8 text-center">
+                  <FileText className="h-10 w-10 text-dark-border-light mx-auto mb-3" />
+                  <p className="text-sm text-text-muted">No user stories generated yet.</p>
+                  <p className="text-xs text-text-muted mt-1">Run the Business Analyst Agent in the pipeline.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-dark-border">
+                        <th className="text-left text-xs font-medium text-text-muted pb-3">ID</th>
+                        <th className="text-left text-xs font-medium text-text-muted pb-3">Title</th>
+                        <th className="text-left text-xs font-medium text-text-muted pb-3">Epic</th>
+                        <th className="text-left text-xs font-medium text-text-muted pb-3">Role</th>
+                        <th className="text-left text-xs font-medium text-text-muted pb-3">MoSCoW</th>
+                        <th className="text-left text-xs font-medium text-text-muted pb-3">Points</th>
+                        <th className="text-left text-xs font-medium text-text-muted pb-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {storyRows.map((story) => (
+                        <tr key={story.id} className="border-b border-dark-border/50 hover:bg-dark-cardHover">
+                          <td className="py-3 text-xs font-mono text-text-muted">{story.id}</td>
+                          <td className="py-3 text-sm text-text-primary max-w-xs truncate">{story.title}</td>
+                          <td className="py-3 text-xs text-text-secondary">{story.epic}</td>
+                          <td className="py-3 text-xs text-text-muted">{story.role}</td>
+                          <td className="py-3">
+                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                              story.moscow === 'Must' ? 'bg-status-error/10 text-status-error'
+                              : story.moscow === 'Should' ? 'bg-status-warning/10 text-status-warning'
+                              : story.moscow === 'Could' ? 'bg-status-info/10 text-status-info'
+                              : 'bg-dark-border text-text-muted'
+                            }`}>{story.moscow}</span>
+                          </td>
+                          <td className="py-3 text-xs text-text-secondary">{story.points}</td>
+                          <td className="py-3">
+                            <StatusBadge status={
+                              story.status === 'done' ? 'success'
+                              : story.status === 'in-progress' ? 'running'
+                              : story.status === 'review' ? 'warning'
+                              : 'pending'
+                            }>{story.status}</StatusBadge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Acceptance Criteria for selected story */}
+              {storyRows.length > 0 && (
+                <details className="mt-4">
+                  <summary className="cursor-pointer text-xs text-ey-yellow font-medium">View Acceptance Criteria</summary>
+                  <div className="mt-3 space-y-2">
+                    {storyRows.slice(0, 3).map((story) => (
+                      <div key={story.id} className="rounded-lg bg-dark-bg p-3">
+                        <p className="text-xs font-medium text-text-primary mb-1">{story.id}: {story.title}</p>
+                        {story.acceptanceCriteria.length > 0 ? (
+                          <ul className="list-disc list-inside space-y-0.5">
+                            {story.acceptanceCriteria.map((ac, i) => (
+                              <li key={i} className="text-[10px] text-text-muted">{ac}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-[10px] text-text-muted italic">No acceptance criteria defined</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </Card>
+          )}
+
+          {/* Epics tab */}
+          {activeTab === 'epics' && (
+            <div className="grid gap-4 md:grid-cols-2">
+              {epicSummaries.length === 0 ? (
+                <Card className="col-span-full py-8 text-center">
+                  <Layers className="h-10 w-10 text-dark-border-light mx-auto mb-3" />
+                  <p className="text-sm text-text-muted">No epics defined yet.</p>
+                </Card>
+              ) : (
+                epicSummaries.map((epic, i) => (
+                  <motion.div
+                    key={epic.title}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                  >
+                    <Card>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Layers className="h-4 w-4 text-ey-yellow" />
+                        <h3 className="text-sm font-semibold text-text-primary">{epic.title}</h3>
+                      </div>
+                      {epic.description && (
+                        <p className="text-xs text-text-secondary mb-3">{epic.description}</p>
+                      )}
+                      <div className="flex items-center gap-3 text-[10px] text-text-muted">
+                        <span>{epic.storyCount} stories</span>
+                        <span>·</span>
+                        <span>{epic.totalPoints} points</span>
+                      </div>
+                      <div className="mt-2 h-1 rounded-full bg-dark-border overflow-hidden">
+                        <div className="h-full rounded-full bg-ey-yellow" style={{ width: `${Math.min(100, epic.storyCount * 20)}%` }} />
+                      </div>
+                    </Card>
+                  </motion.div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* Personas tab */}
+          {activeTab === 'personas' && (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {personas.length === 0 ? (
+                <Card className="col-span-full py-8 text-center">
+                  <Users className="h-10 w-10 text-dark-border-light mx-auto mb-3" />
+                  <p className="text-sm text-text-muted">No personas defined yet.</p>
+                </Card>
+              ) : (
+                personas.map((persona, i) => (
+                  <motion.div
+                    key={persona.name}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                  >
+                    <Card>
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-ey-yellow/10">
+                          <Users className="h-4 w-4 text-ey-yellow" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <h3 className="text-sm font-semibold text-text-primary">{persona.name}</h3>
+                            {persona.isDerived && (
+                              <span
+                                className="text-[9px] px-1.5 py-0.5 rounded-full bg-dark-border text-text-muted"
+                                title="Derived from the story role, not generated by the Business Analyst agent"
+                              >
+                                Derived from stories
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-text-muted">{persona.role}</p>
+                        </div>
+                      </div>
+                      {persona.demographics && (
+                        <p className="text-[10px] text-text-muted italic mb-2">{persona.demographics}</p>
+                      )}
+                      {persona.goals.length > 0 && (
+                        <div className="mb-2">
+                          <p className="text-[10px] font-medium text-text-muted mb-1">Goals:</p>
+                          <ul className="list-disc list-inside space-y-0.5">
+                            {persona.goals.map((g, j) => (
+                              <li key={j} className="text-[10px] text-text-secondary">{g}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {persona.painPoints.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-medium text-text-muted mb-1">Pain Points:</p>
+                          <ul className="list-disc list-inside space-y-0.5">
+                            {persona.painPoints.map((p, j) => (
+                              <li key={j} className="text-[10px] text-text-muted">{p}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </Card>
+                  </motion.div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* BRD / SRS tab */}
+          {activeTab === 'brd-srs' && (
+            <Card>
+              {!storiesData.detailed_brd && !storiesData.srs ? (
+                <div className="py-8 text-center">
+                  <FileTextIcon className="h-10 w-10 text-dark-border-light mx-auto mb-3" />
+                  <p className="text-sm text-text-muted">No BRD/SRS generated yet.</p>
+                </div>
+              ) : (
+                <Accordion>
+                  {storiesData.detailed_brd && (
+                    <AccordionItem title="Business Requirements Document" icon={FileTextIcon} defaultOpen>
+                      <Markdown content={storiesData.detailed_brd} />
+                    </AccordionItem>
+                  )}
+                  {storiesData.srs && (
+                    <AccordionItem title="Software Requirements Specification" icon={FileText}>
+                      <Markdown content={storiesData.srs} />
+                    </AccordionItem>
+                  )}
+                </Accordion>
+              )}
+            </Card>
+          )}
+
+          {/* Process Flows tab */}
+          {activeTab === 'flows' && (
+            <Card>
+              {storiesData.process_flows.length === 0 && storiesData.business_workflows.length === 0 && storiesData.validation_rules.length === 0 && storiesData.exception_handling.length === 0 ? (
+                <div className="py-8 text-center">
+                  <Zap className="h-10 w-10 text-dark-border-light mx-auto mb-3" />
+                  <p className="text-sm text-text-muted">No process flows generated yet.</p>
+                </div>
+              ) : (
+                <Accordion>
+                  {storiesData.process_flows.map((flow: any, i: number) => (
+                    <AccordionItem key={i} title={flow.name || `Process ${i + 1}`} icon={Zap} defaultOpen={i === 0}>
+                      <ol className="list-decimal list-inside space-y-1 mb-3">
+                        {(flow.steps || []).map((s: string, j: number) => (
+                          <li key={j} className="text-xs text-text-secondary leading-relaxed">{s}</li>
+                        ))}
+                      </ol>
+                      {flow.diagram && (
+                        <div className="rounded-lg bg-dark-bg p-3 overflow-x-auto">
+                          <pre className="text-[10px] font-mono text-text-muted whitespace-pre-wrap">{flow.diagram}</pre>
+                        </div>
+                      )}
+                    </AccordionItem>
+                  ))}
+                  {storiesData.business_workflows.length > 0 && (
+                    <AccordionItem title="Business Workflows" icon={Briefcase}>
+                      <BulletList items={storiesData.business_workflows} />
+                    </AccordionItem>
+                  )}
+                  {storiesData.validation_rules.length > 0 && (
+                    <AccordionItem title="Validation Rules" icon={CheckCircle2}>
+                      <BulletList items={storiesData.validation_rules} />
+                    </AccordionItem>
+                  )}
+                  {storiesData.exception_handling.length > 0 && (
+                    <AccordionItem title="Exception Handling" icon={AlertTriangle}>
+                      <BulletList items={storiesData.exception_handling} />
+                    </AccordionItem>
+                  )}
+                </Accordion>
+              )}
+            </Card>
+          )}
+
+          {/* Risk & Metrics tab */}
+          {activeTab === 'risks' && (
+            <Card>
+              {storiesData.risk_analysis.length === 0 && storiesData.success_metrics.length === 0 ? (
+                <div className="py-8 text-center">
+                  <AlertTriangle className="h-10 w-10 text-dark-border-light mx-auto mb-3" />
+                  <p className="text-sm text-text-muted">No risk analysis or success metrics generated yet.</p>
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-2">Risk Analysis</h4>
+                    <div className="space-y-2">
+                      {storiesData.risk_analysis.map((r: any, i: number) => (
+                        <div key={i} className="rounded-lg border border-status-warning/20 bg-status-warning/5 p-3">
+                          <p className="text-xs font-medium text-text-primary mb-1">{r.risk}</p>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-dark-border text-text-muted">likelihood: {r.likelihood || 'medium'}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-dark-border text-text-muted">impact: {r.impact || 'medium'}</span>
+                          </div>
+                          {r.mitigation && <p className="text-[11px] text-text-secondary"><span className="text-text-primary font-medium">Mitigation:</span> {r.mitigation}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-2">Success Metrics</h4>
+                    <div className="space-y-2">
+                      {storiesData.success_metrics.map((m: any, i: number) => (
+                        <div key={i} className="rounded-lg bg-dark-bg p-3">
+                          <p className="text-xs font-medium text-text-primary">{m.metric}</p>
+                          {m.target && <p className="text-[11px] text-status-success mt-0.5">Target: {m.target}</p>}
+                          {m.measurement_method && <p className="text-[10px] text-text-muted mt-0.5">{m.measurement_method}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

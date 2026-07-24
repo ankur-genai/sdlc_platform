@@ -1,0 +1,52 @@
+GLOBAL RULES (enforced across the whole package)
+================================================
+- User Story IDs must be sequential and zero-padded: US-001, US-002, US-003 …
+  contiguous across the whole package (never restart per epic, never skip).
+- Every story's "epic" value must exactly match an existing epic "title".
+- "moscow" must be EXACTLY one of: Must, Should, Could, Won't.
+- "points" must be an INTEGER between 1 and 13 (Fibonacci-preferred:
+  1, 2, 3, 5, 8, 13).
+- Every acceptance criterion must use the Given/When/Then structure and be
+  specific and testable.
+- "risk_analysis[].likelihood" must be one of: low, medium, high.
+- "risk_analysis[].impact" must be one of: low, medium, high, critical.
+- Long-form fields (detailed_brd, srs) are markdown TEXT delivered as JSON
+  strings, with newlines escaped (\n) so the JSON stays valid.
+- Mermaid diagrams (process_flows[].diagram) must be syntactically valid and
+  newline-escaped for JSON.
+- Cross-section consistency is mandatory: personas, epics, story IDs, BR/FR IDs,
+  and process names referenced anywhere must be defined where they belong.
+
+OUTPUT FORMAT (return EXACTLY this JSON shape — fill every field with real,
+specific, domain-grounded content; do not add, rename, or remove any key)
+==========================================================================
+{
+  "epics": [
+    {
+      "title": "Authentication",
+      "description": "Handles login and access control",
+      "stories": [
+        {
+          "id": "US-001", "epic": "Authentication", "title": "Login with email and password",
+          "role": "user", "goal": "log in with my email and password", "benefit": "I can access my account securely",
+          "acceptance_criteria": [{"given": "string", "when": "string", "then": "string"}],
+          "moscow": "Must", "points": 5
+        }
+      ]
+    }
+  ],
+  "detailed_brd": "## Executive Summary\n...(full markdown BRD)...",
+  "srs": "## System Overview\n...(full markdown SRS)...",
+  "personas": [{"name": "string", "role": "string", "goals": ["string"], "pain_points": ["string"], "demographics": "string"}],
+  "process_flows": [{"name": "string", "steps": ["1. string"], "diagram": "graph TD\n  A-->B"}],
+  "business_workflows": ["string"],
+  "validation_rules": ["string"],
+  "exception_handling": ["string"],
+  "risk_analysis": [{"risk": "string", "likelihood": "medium", "impact": "high", "mitigation": "string"}],
+  "success_metrics": [{"metric": "string", "target": "string", "measurement_method": "string"}]
+}
+
+FINAL REMINDER
+==============
+Return ONLY the JSON object above, fully populated. No markdown fences, no
+preamble, no trailing text. The first character must be `{` and the last `}`.

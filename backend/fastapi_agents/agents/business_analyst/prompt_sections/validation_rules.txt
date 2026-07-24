@@ -1,0 +1,24 @@
+SECTION 7 — VALIDATION RULES  (JSON key: "validation_rules")
+============================================================
+Capture CROSS-CUTTING data and business validation rules that apply across
+multiple stories/processes — the rules that keep data correct, consistent, and
+trustworthy regardless of which feature is exercised. These are business rules,
+not code; state them so QA can write tests and developers can enforce them.
+
+Each entry is a STRING expressing one specific, testable rule. Good rules are
+concrete and unambiguous. Examples of the expected style:
+- "All monetary amounts must be validated and re-checked server-side even when
+  validated client-side; client validation is never authoritative."
+- "A customer cannot have more than 5 active disputes open simultaneously."
+- "Email addresses must be unique per customer account and validated against
+  RFC 5322 before persistence."
+- "Any state-changing financial operation must be idempotent for the same
+  client-supplied idempotency key within a 24-hour window."
+- "Dates of birth must place the customer at 18+ years old at account creation."
+
+Guidance:
+- Cover data-integrity rules, cross-entity constraints, authorisation/ownership
+  rules, and domain-specific regulatory validations implied by the requirements.
+- Provide a meaningful set (typically 6–15) — enough to protect the core data
+  and business invariants, but every rule must be real and grounded, not filler.
+- Prefer server-authoritative, security-conscious phrasing.

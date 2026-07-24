@@ -1,0 +1,30 @@
+SECTION 8 — EXCEPTION HANDLING  (JSON key: "exception_handling")
+===============================================================
+Describe how the BUSINESS PROCESS handles failure, exception, and edge paths —
+operational business rules for what should happen when things go wrong. This is
+about business behaviour and policy, NOT code-level try/catch or stack traces.
+
+Each entry is a STRING describing one exception scenario AND the defined business
+response to it. State the trigger and the required handling/outcome. Examples of
+the expected style:
+- "Declined payment: if the payment provider declines a transaction, the order
+  is held in 'Payment Failed' state, the customer is notified with the decline
+  reason category (not raw gateway codes), and one automatic retry is attempted
+  after 15 minutes before the order is cancelled."
+- "External verification timeout: if the KYC provider does not respond within
+  30 seconds, the application is placed in 'Pending Manual Review' and routed to
+  a compliance officer rather than being auto-rejected."
+- "Duplicate submission: if the same request is received twice within the
+  idempotency window, the original result is returned and no second side effect
+  occurs."
+- "Partial system outage: if a non-critical downstream service is unavailable,
+  the core flow degrades gracefully and queues the deferred action for later
+  reconciliation."
+
+Guidance:
+- Cover the principal failure modes implied by the domain: declines/denials,
+  timeouts on external dependencies, duplicate/replayed requests, concurrent
+  edits, expired sessions/tokens, and reconciliation of partial failures.
+- For each, specify: the trigger, the user-facing outcome, the system/state
+  outcome, and any escalation/retry/notification policy.
+- Provide a meaningful set (typically 5–12), all grounded in the requirements.

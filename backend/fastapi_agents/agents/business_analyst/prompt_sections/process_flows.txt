@@ -1,0 +1,26 @@
+SECTION 5 — PROCESS FLOWS  (JSON key: "process_flows")
+======================================================
+Document the KEY end-to-end business processes implied by the requirements (e.g.
+"New Account Opening", "Loan Approval", "Dispute Resolution", "Checkout &
+Payment"). Provide enough flows to cover the primary value-delivering journeys —
+typically 3–6 for a mid-sized system.
+
+Each process flow object contains:
+- "name": the business process name (e.g. "New Account Opening").
+- "steps": an ORDERED list of steps as strings. Prefix each with its number
+  ("1. ", "2. ", …). Each step names the ACTOR performing it and the concrete
+  action/decision. Include decision branches and their outcomes explicitly
+  (e.g. "4. System validates KYC documents; if invalid, route to Step 4a
+  (request re-upload)"). Cover the happy path plus principal decision points.
+- "diagram": a VALID Mermaid diagram source string that visualises the same flow
+  — use `graph TD` (flowchart) OR `sequenceDiagram` syntax. The diagram MUST:
+    * show the actors/lanes and the decision points (diamonds for decisions in
+      flowcharts),
+    * label decision edges (e.g. |Yes| / |No|, |Valid| / |Invalid|),
+    * stay syntactically valid Mermaid (proper node/edge syntax, newlines
+      escaped for JSON, e.g. "graph TD\n  A[Start] --> B{Valid?}").
+  The diagram and the "steps" list must describe the SAME process — no
+  contradictions between them.
+
+Consistency: actors in the steps/diagram must be personas defined in the
+personas section; process names may be referenced from business_workflows.
