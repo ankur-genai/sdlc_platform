@@ -71,7 +71,7 @@ from . import agent_runner as _agent_runner
 
 from pydantic import BaseModel as _BaseModel
 from .logging_config import get_logger
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status, File, UploadFile, Form
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -477,9 +477,24 @@ async def requirements_copilot_endpoint(
         raise HTTPException(404, "No requirements artifact found. Please generate requirements first.")
     current_doc = json.loads(req_art.content)
 
+    # Check for uploaded context PDF for this project
+    pdf_art = db.query(GeneratedArtifact).filter(
+        GeneratedArtifact.project_id == project_id,
+        GeneratedArtifact.artifact_type == "uploaded_requirements_pdf"
+    ).first()
+    augmented_prompt = prompt
+    if pdf_art and pdf_art.content:
+        try:
+            pdf_data = json.loads(pdf_art.content)
+            pdf_text = pdf_data.get("extracted_text", "")
+            if pdf_text:
+                augmented_prompt += f"\n\n[CONTEXT FROM UPLOADED REQUIREMENTS PDF ({pdf_data.get('file_name', 'Uploaded.pdf')}):\n{pdf_text[:12000]}\n]"
+        except Exception:
+            pass
+
     from .agents.requirements.copilot_agent import RequirementCopilotAgent
     agent = RequirementCopilotAgent(db, project_id)
-    proposed = agent.process_prompt(current_doc, prompt)
+    proposed = agent.process_prompt(current_doc, augmented_prompt)
     return proposed
 
 
@@ -3266,6 +3281,104 @@ def update_pdf_status(
 
 
 # ===========================================================================
+# COPILOT PDF UPLOAD & CONTEXT ENDPOINTS
+# ===========================================================================
+
+@router.post("/projects/{project_id}/upload-copilot-pdf", tags=["copilot"])
+async def upload_copilot_pdf_endpoint(
+    project_id: int,
+    workspace_type: str = Form("requirements"),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Upload an existing Requirements or BRD PDF, extract text context, and persist per project."""
+    _get_project_or_404(db, project_id)
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only PDF files (.pdf) are supported.")
+
+    content_bytes = await file.read()
+    if not content_bytes:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Uploaded PDF file is empty.")
+
+    extracted_text = ""
+    try:
+        from pypdf import PdfReader
+        import io
+        reader = PdfReader(io.BytesIO(content_bytes))
+        for page in reader.pages:
+            txt = page.extract_text()
+            if txt:
+                extracted_text += txt + "\n"
+    except Exception as exc:
+        logger.warning(f"PDF extraction warning for project {project_id}: {exc}")
+        extracted_text = content_bytes.decode("utf-8", errors="ignore")
+
+    artifact_type = "uploaded_requirements_pdf" if workspace_type == "requirements" else "uploaded_brd_pdf"
+    
+    art_payload = {
+        "file_name": file.filename,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "extracted_text": extracted_text[:25000]
+    }
+    
+    art = db.query(GeneratedArtifact).filter(
+        GeneratedArtifact.project_id == project_id,
+        GeneratedArtifact.artifact_type == artifact_type
+    ).first()
+    
+    if art:
+        art.content = json.dumps(art_payload)
+        db.add(art)
+    else:
+        art = GeneratedArtifact(
+            project_id=project_id,
+            artifact_type=artifact_type,
+            content=json.dumps(art_payload)
+        )
+        db.add(art)
+    db.commit()
+
+    return {
+        "status": "ok",
+        "project_id": project_id,
+        "workspace_type": workspace_type,
+        "file_name": file.filename,
+        "text_length": len(extracted_text),
+        "message": f"PDF '{file.filename}' uploaded and parsed successfully for project context."
+    }
+
+
+@router.get("/projects/{project_id}/copilot-pdf-status", tags=["copilot"])
+def get_copilot_pdf_status(
+    project_id: int,
+    workspace_type: str = Query("requirements"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve the upload status and metadata for a project's uploaded context PDF."""
+    _get_project_or_404(db, project_id)
+    artifact_type = "uploaded_requirements_pdf" if workspace_type == "requirements" else "uploaded_brd_pdf"
+    art = db.query(GeneratedArtifact).filter(
+        GeneratedArtifact.project_id == project_id,
+        GeneratedArtifact.artifact_type == artifact_type
+    ).first()
+    
+    if art and art.content:
+        try:
+            data = json.loads(art.content)
+            return {
+                "uploaded": True,
+                "file_name": data.get("file_name", "Uploaded Document.pdf"),
+                "uploaded_at": data.get("uploaded_at"),
+                "text_length": len(data.get("extracted_text", ""))
+            }
+        except Exception:
+            return {"uploaded": False}
+    return {"uploaded": False}
+
+
+# ===========================================================================
 # BUSINESS ANALYST COPILOT & BRD PDF ENDPOINTS
 # ===========================================================================
 
@@ -3285,9 +3398,24 @@ async def ba_copilot_endpoint(
     ba_art = _latest_artifact(db, project_id, "user_stories") or _latest_artifact(db, project_id, "brd_document")
     current_doc = json.loads(ba_art.content) if ba_art else {}
 
+    # Check for uploaded context PDF for this project
+    pdf_art = db.query(GeneratedArtifact).filter(
+        GeneratedArtifact.project_id == project_id,
+        GeneratedArtifact.artifact_type == "uploaded_brd_pdf"
+    ).first()
+    augmented_prompt = prompt
+    if pdf_art and pdf_art.content:
+        try:
+            pdf_data = json.loads(pdf_art.content)
+            pdf_text = pdf_data.get("extracted_text", "")
+            if pdf_text:
+                augmented_prompt += f"\n\n[CONTEXT FROM UPLOADED BRD PDF ({pdf_data.get('file_name', 'Uploaded.pdf')}):\n{pdf_text[:12000]}\n]"
+        except Exception:
+            pass
+
     from .agents.ba.copilot_agent import BACopilotAgent
     agent = BACopilotAgent(db, project_id)
-    proposed = agent.process_prompt(current_doc, prompt)
+    proposed = agent.process_prompt(current_doc, augmented_prompt)
     return proposed
 
 

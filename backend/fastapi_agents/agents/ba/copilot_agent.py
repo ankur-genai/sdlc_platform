@@ -63,7 +63,78 @@ class BACopilotAgent:
         p_lower = prompt.lower()
         
         if DEMO_MODE or not getattr(self.llm, "is_configured", True):
-            if "acceptance" in p_lower or "criteria" in p_lower or "improve" in p_lower:
+            if "payment" in p_lower or "stripe" in p_lower or "checkout" in p_lower:
+                return {
+                    "message": "Proposed Payment Processing Epic and User Story based on user prompt and uploaded BRD PDF context.",
+                    "summary": "Added Payment Gateway Checkout user story and associated Epic for secure e-commerce transactions.",
+                    "added_epics": [
+                        {
+                            "id": "EPIC-05",
+                            "title": "Payment & E-Commerce Integration",
+                            "description": "Secure payment gateway checkout, invoice generation, and transaction processing.",
+                            "priority": "Must"
+                        }
+                    ],
+                    "added_stories": [
+                        {
+                            "id": "STORY-200",
+                            "epic_id": "EPIC-05",
+                            "title": "Stripe Payment Checkout & Invoice Generation",
+                            "user_persona": "Registered Customer",
+                            "user_action": "complete payment via Credit Card or Apple Pay",
+                            "business_benefit": "enable instant order settlement and automated invoice delivery",
+                            "priority": "Must",
+                            "acceptance_criteria": [
+                                "Given a customer on the checkout screen, When valid card details are submitted, Then payment is processed within 1.5 seconds.",
+                                "Given a successful transaction, When payment succeeds, Then a PDF receipt is generated and emailed to the user."
+                            ],
+                            "estimated_story_points": 8,
+                            "risk_level": "Medium"
+                        }
+                    ],
+                    "modified_stories": [],
+                    "deleted_story_ids": [],
+                    "warnings": [],
+                    "impact_analysis": {
+                        "what_changed": "Added EPIC-05 and STORY-200 for Payment Processing.",
+                        "why_it_changed": "Support digital payment gateway integration.",
+                        "affected_epics": ["EPIC-05"],
+                        "affected_stories": ["STORY-200"],
+                        "downstream_impact": "Requires integration with Stripe API in backend architecture."
+                    }
+                }
+            elif "postgresql" in p_lower or "mysql" in p_lower:
+                return {
+                    "message": "Proposed Database Migration user story based on prompt and uploaded document context.",
+                    "summary": "Added story for migrating database storage engine to PostgreSQL 16.",
+                    "added_stories": [
+                        {
+                            "id": "STORY-201",
+                            "epic_id": "EPIC-02",
+                            "title": "PostgreSQL 16 High-Performance Persistence",
+                            "user_persona": "Database Administrator",
+                            "user_action": "configure PostgreSQL 16 read-replicas and JSONB indexing",
+                            "business_benefit": "ensure sub-millisecond query performance and 99.99% availability",
+                            "priority": "Must",
+                            "acceptance_criteria": [
+                                "Given a database failover event, When primary node fails, Then read-replica is promoted within 2 seconds."
+                            ],
+                            "estimated_story_points": 5,
+                            "risk_level": "Low"
+                        }
+                    ],
+                    "modified_stories": [],
+                    "deleted_story_ids": [],
+                    "warnings": [],
+                    "impact_analysis": {
+                        "what_changed": "Added STORY-201 for PostgreSQL Migration.",
+                        "why_it_changed": "Upgrade persistence layer.",
+                        "affected_epics": ["EPIC-02"],
+                        "affected_stories": ["STORY-201"],
+                        "downstream_impact": "Updates Database Agent schema definitions."
+                    }
+                }
+            elif "acceptance" in p_lower or "criteria" in p_lower or "improve" in p_lower:
                 return {
                     "message": "Improved acceptance criteria for all user stories with Given-When-Then formal validation syntax.",
                     "summary": "Refined acceptance criteria to follow Gherkin BDD standards for automated QA test generation.",

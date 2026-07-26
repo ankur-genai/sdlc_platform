@@ -979,6 +979,14 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
         [Paragraph("Lead Business Analyst", styles_map['cell']), Paragraph("BA Agent", styles_map['cell']), Paragraph("<font color='#059669'>APPROVED</font>", styles_map['cell']), Paragraph(datetime.now().strftime('%Y-%m-%d'), styles_map['cell'])],
     ]
 
+    # Extract problem statement if available
+    prob_statement = brd.get("problem_statement") or getattr(proj, "description", "") or "The current business operation requires modern digital transformation, automated workflow orchestration, and scalable integration across enterprise modules to reduce operational overhead and eliminate process bottlenecks."
+
+    revision_rows = [
+        [Paragraph("1.0", styles_map['cell_bold']), Paragraph(datetime.now().strftime('%Y-%m-%d'), styles_map['cell']), Paragraph("Initial BRD Generation & Single Source Sync", styles_map['cell']), Paragraph("Lead BA Agent", styles_map['cell'])],
+        [Paragraph("1.1", styles_map['cell_bold']), Paragraph(datetime.now().strftime('%Y-%m-%d'), styles_map['cell']), Paragraph("Copilot Mutation & Workspace Refinement", styles_map['cell']), Paragraph("Product Owner", styles_map['cell'])],
+    ]
+
     # Full Enterprise Section Definition
     raw_sections = [
         ("Executive Summary", lambda: [
@@ -990,6 +998,14 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
                 [Paragraph("<b>Metric</b>", styles_map['header']), Paragraph("<b>Target SLA</b>", styles_map['header']), Paragraph("<b>Measurement Method</b>", styles_map['header'])],
                 *metric_rows
             ], colWidths=[200, 120, 184], style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
+        ]),
+        ("Problem Statement & Current Business Context", lambda: [
+            Paragraph(prob_statement, styles_map['body']),
+            Spacer(1, 8),
+            Paragraph("<b>Business Need & Drivers:</b>", styles_map['h2']),
+            Paragraph("• Automate manual steps and establish centralized workspace governance.", styles_map['bullet']),
+            Paragraph("• Ensure end-to-end traceability across business requirements, user stories, and acceptance criteria.", styles_map['bullet']),
+            Paragraph("• Standardize documentation compliance following enterprise IEEE 830 / Agile standards.", styles_map['bullet'])
         ]),
         ("Project Overview & Scope", lambda: [
             Paragraph(scope_text, styles_map['body'])
@@ -1050,7 +1066,13 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
         ("Risk Assessment & Mitigation", lambda: [
             Paragraph(f"• <b>Risk {i+1}:</b> {r.get('description', str(r)) if isinstance(r, dict) else str(r)} (Likelihood: {r.get('likelihood', 'Low') if isinstance(r, dict) else 'Low'}, Impact: {r.get('impact', 'Medium') if isinstance(r, dict) else 'Medium'})", styles_map['bullet']) for i, r in enumerate(risks[:8])
         ] or [Paragraph("• Standard risk management controls applied.", styles_map['bullet'])]),
-        ("Approval & Revision History", lambda: [
+        ("Document Control & Revision History", lambda: [
+            Table([
+                [Paragraph("<b>Version</b>", styles_map['header']), Paragraph("<b>Date</b>", styles_map['header']), Paragraph("<b>Summary of Changes</b>", styles_map['header']), Paragraph("<b>Author / Role</b>", styles_map['header'])],
+                *revision_rows
+            ], colWidths=[60, 90, 234, 120], style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
+        ]),
+        ("Approval & Sign-Off Matrix", lambda: [
             Table([
                 [Paragraph("<b>Role</b>", styles_map['header']), Paragraph("<b>Approver</b>", styles_map['header']), Paragraph("<b>Status</b>", styles_map['header']), Paragraph("<b>Date</b>", styles_map['header'])],
                 *approval_rows

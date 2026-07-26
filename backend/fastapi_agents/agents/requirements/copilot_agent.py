@@ -94,8 +94,86 @@ class RequirementCopilotAgent:
         if DEMO_MODE:
             p_lower = prompt.lower()
             
+            # Payment / Checkout prompt or uploaded PDF context
+            if "payment" in p_lower or "stripe" in p_lower or "checkout" in p_lower:
+                return {
+                    "message": "Proposed Payment Gateway Integration requirement based on prompt and uploaded PDF document context.",
+                    "summary": "Integrate PCI-DSS compliant payment processing for credit card and digital wallet transactions.",
+                    "added": [
+                        {
+                            "id": "FR-100",
+                            "description": "The system must process secure credit card and digital wallet payments via Stripe/PayPal API with TLS 1.3 encryption.",
+                            "category": "Functional",
+                            "priority": "Must",
+                            "risk_level": "High",
+                            "business_rules": ["Payment transactions must generate an instant PDF invoice.", "Refunds must be authorized by an Administrator."],
+                            "edge_cases": ["Payment gateway timeout", "Insufficient card balance."],
+                            "validations": ["Validate card number format and CVV."],
+                            "workflow": ["User selects payment method", "Payment API is invoked", "Receipt is generated"],
+                            "acceptance_criteria": [
+                                {
+                                    "given": "A user on the checkout page",
+                                    "when": "they submit valid payment details",
+                                    "then": "the transaction is settled within 1.5 seconds and a confirmation email is sent"
+                                }
+                            ]
+                        }
+                    ],
+                    "modified": [],
+                    "deleted": [],
+                    "warnings": ["Requires PCI-DSS compliance verification."],
+                    "impact_analysis": {
+                        "what_changed": "Added FR-100 (Payment Gateway Processing).",
+                        "why_it_changed": "Integrate e-commerce transaction capabilities.",
+                        "affected_requirements": ["FR-001"],
+                        "affected_dependencies": ["Stripe API Gateway"],
+                        "affected_acceptance_criteria": ["Checkout settlement"],
+                        "affected_traceability": ["Payment compliance"],
+                        "downstream_impact": "Requires payment gateway SDK configuration in Backend Agent."
+                    },
+                    "traceability_updates": [
+                        {
+                            "requirement_id": "FR-100",
+                            "business_goal": "Enable automated digital payments",
+                            "source": "Requirement Copilot",
+                            "related_requirements": ["FR-001"]
+                        }
+                    ],
+                    "confidence_score": 0.98
+                }
+
+            # Database engine change: MySQL / PostgreSQL
+            elif "postgresql" in p_lower or "mysql" in p_lower:
+                return {
+                    "message": "Proposed updating system database architecture to PostgreSQL 16 with JSONB document support.",
+                    "summary": "Migrate database specification to PostgreSQL 16 for high-throughput relational and JSON document persistence.",
+                    "added": [
+                        {
+                            "id": "NFR-105",
+                            "description": "The persistence layer must use PostgreSQL 16 with connection pooling (PgBouncer) and automated read-replica failover.",
+                            "category": "Non-Functional",
+                            "priority": "Must",
+                            "risk_level": "High"
+                        }
+                    ],
+                    "modified": [],
+                    "deleted": [],
+                    "warnings": [],
+                    "impact_analysis": {
+                        "what_changed": "Added NFR-105 (PostgreSQL 16 Engine Standard).",
+                        "why_it_changed": "Upgrade database tier for enterprise reliability.",
+                        "affected_requirements": [],
+                        "affected_dependencies": ["PostgreSQL Cluster"],
+                        "affected_acceptance_criteria": [],
+                        "affected_traceability": [],
+                        "downstream_impact": "Updates Database Design Agent schemas to PostgreSQL dialect."
+                    },
+                    "traceability_updates": [],
+                    "confidence_score": 0.97
+                }
+
             # Banking Security Verification query
-            if "security" in p_lower or "banking" in p_lower:
+            elif "security" in p_lower or "banking" in p_lower:
                 return {
                     "message": "I've proposed new multi-factor authentication (MFA) and data encryption protocols suitable for a high-security banking environment.",
                     "summary": "Integrate robust encryption and session timeouts to satisfy financial regulatory frameworks.",

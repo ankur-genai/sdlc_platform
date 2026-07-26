@@ -52,6 +52,7 @@ import {
   CheckSquare,
   Workflow,
   FileCheck,
+  Upload,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Markdown } from '../components/ui/Markdown';
@@ -163,6 +164,65 @@ export function BusinessAnalystWorkspace() {
   }, [storiesArtifactData]);
 
   // BRD PDF Status starts as 'synchronized' by default. Out of date banner triggers ONLY on actual Copilot changes applied.
+
+  // PDF Context Upload State
+  const [uploadedPdfInfo, setUploadedPdfInfo] = useState<{ filename: string; uploadedAt?: string } | null>(null);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+
+  // Fetch uploaded PDF status for this project
+  useEffect(() => {
+    const fetchPdfUploadStatus = async () => {
+      if (!projectId) return;
+      try {
+        const res = await fetch(buildApiUrl(`/projects/${projectId}/copilot-pdf-status?workspace_type=business_analyst`));
+        const data = await res.json();
+        if (data && data.uploaded) {
+          setUploadedPdfInfo({ filename: data.file_name, uploadedAt: data.uploaded_at });
+        } else {
+          setUploadedPdfInfo(null);
+        }
+      } catch (err) {
+        console.error("Failed to fetch uploaded BRD PDF status:", err);
+      }
+    };
+    fetchPdfUploadStatus();
+  }, [projectId]);
+
+  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !projectId) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      alert("Please select a valid PDF document (.pdf)");
+      return;
+    }
+    setUploadingPdf(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('workspace_type', 'business_analyst');
+
+      const token = localStorage.getItem('token') || '';
+      const res = await fetch(buildApiUrl(`/projects/${projectId}/upload-copilot-pdf`), {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'ok') {
+        setUploadedPdfInfo({ filename: data.file_name });
+        setSyncNotification(`BRD PDF '${data.file_name}' uploaded successfully! BA Copilot will now use this document as context.`);
+        setTimeout(() => setSyncNotification(null), 8000);
+      } else {
+        alert(`PDF Upload failed: ${data.detail || 'Server error'}`);
+      }
+    } catch (err: any) {
+      alert(`PDF Upload error: ${err.message}`);
+    } finally {
+      setUploadingPdf(false);
+    }
+  };
 
   // Dynamic Summary Metrics (100% calculated reactively from workspace artifact — ZERO hardcoded numbers)
   const metrics = useMemo(() => {
@@ -1129,6 +1189,31 @@ export function BusinessAnalystWorkspace() {
 
             {/* Prompt Chips & Input Controls */}
             <div className="p-3.5 border-t border-dark-border bg-dark-bg space-y-3">
+              {/* PDF Context Upload Bar */}
+              <div className="p-2.5 bg-dark-card border border-dark-border rounded-xl flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <FileText className="h-4 w-4 text-ey-yellow flex-shrink-0" />
+                  <div className="truncate">
+                    {uploadedPdfInfo ? (
+                      <div>
+                        <span className="font-bold text-text-primary block truncate">📄 Context: {uploadedPdfInfo.filename}</span>
+                        <span className="text-[10px] text-status-success font-semibold">Uploaded BRD PDF active for LLM context</span>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="font-bold text-text-primary block">Upload Existing BRD PDF</span>
+                        <span className="text-[10px] text-text-muted">Inject custom BRD PDF document into Copilot prompt context</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <label className="bg-dark-surface hover:bg-dark-border border border-dark-border text-text-primary hover:text-ey-yellow px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1.5">
+                  <Upload className="h-3.5 w-3.5 text-ey-yellow" />
+                  <span>{uploadingPdf ? 'Uploading...' : uploadedPdfInfo ? 'Replace PDF' : 'Upload PDF'}</span>
+                  <input type="file" accept=".pdf" onChange={handlePdfUpload} disabled={uploadingPdf || isReadOnly} className="hidden" />
+                </label>
+              </div>
+
               {/* Quick Prompt Chips */}
               <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
                 {[
