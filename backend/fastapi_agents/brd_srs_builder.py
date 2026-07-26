@@ -49,8 +49,10 @@ def _load_artifacts(artifacts) -> Dict[str, Any]:
 def build_brd(artifacts, project_name: str, project_description: str = "") -> Dict[str, Any]:
     """
     Build a Business Requirements Document from SDLC artifacts.
-    Returns a structured dict with all BRD sections.
+    Reads the latest persisted Business Analyst Workspace state as the single source of truth.
     """
+    from .models import DEMO_MODE
+
     art = _load_artifacts(artifacts)
     reqs = art.get("requirements_doc", {})
     ba = art.get("user_stories", {})
@@ -61,37 +63,138 @@ def build_brd(artifacts, project_name: str, project_description: str = "") -> Di
 
     req_list = _safe_list(reqs, "requirements")
     epics = _safe_list(ba, "epics")
-    components = _safe_list(arch, "components")
-    standards = _safe_list((comp.get("complianceAssessment") or {}).get("standards", []))
-    threats = _safe_list(sec.get("threatModel", []))
-    risks = _safe_list(reqs.get("risks", []))
-    assumptions = _safe_list(reqs.get("assumptions", []))
+    stories = _safe_list(ba, "stories")
+    personas = _safe_list(ba, "personas")
+    
+    # Check if live BA workspace data exists
+    has_live_ba_data = bool(stories or epics or personas or req_list)
+    use_fallbacks = DEMO_MODE or not has_live_ba_data
 
-    # Extract functional vs non-functional
+    # Extract or fallback Objectives
+    live_objectives = _safe_list(ba, "business_objectives") or _safe_list(reqs, "business_objectives")
+    if not live_objectives and isinstance(reqs.get("executive_summary"), dict):
+        live_objectives = reqs["executive_summary"].get("key_objectives", [])
+
+    objectives = live_objectives or (
+        [
+            "Automate and streamline the target business process to reduce manual effort by 60%+",
+            "Provide a single source of truth for all relevant business data and decisions",
+            "Enable real-time visibility into operations through dashboards and reporting",
+            "Enforce governance, compliance, and audit controls across all user actions",
+            "Deliver a scalable, secure platform that supports future business growth",
+        ] if use_fallbacks else []
+    )
+
+    # Extract or fallback Personas
+    personas_out = personas or (
+        [
+            {"name": "Enterprise User", "role": "Operations Manager", "goals": ["Maximize efficiency", "Automate manual tasks"], "painPoints": ["Manual entry", "Lack of real-time visibility"]},
+            {"name": "System Administrator", "role": "IT Admin", "goals": ["Ensure security & compliance"], "painPoints": ["Complex user management"]}
+        ] if use_fallbacks else []
+    )
+
+    # Extract or fallback Epics & Stories
+    epics_out = epics or (
+        [
+            {"id": "EPIC-01", "title": "Core System Operations", "description": "Primary operational capabilities and workflow automation", "storyCount": 5},
+            {"id": "EPIC-02", "title": "Security & Administration", "description": "User access management, RBAC, and security governance", "storyCount": 3}
+        ] if use_fallbacks else []
+    )
+
+    stories_out = stories or (
+        [
+            {"id": "US-001", "role": "User", "goal": "authenticate securely", "benefit": "access authorized system capabilities", "priority": "Must", "points": 5, "acceptance_criteria": ["Given valid credentials, when login is submitted, then session is established"]},
+            {"id": "US-002", "role": "Admin", "goal": "manage user roles and permissions", "benefit": "enforce security governance", "priority": "Must", "points": 8, "acceptance_criteria": ["Given admin role, when permissions are modified, then changes apply immediately"]}
+        ] if use_fallbacks else []
+    )
+
+    # Extract or fallback Rules, Risks, Assumptions, Dependencies
+    rules_out = _safe_list(ba, "business_rules") or _safe_list(reqs, "business_rules") or (
+        [
+            "A user may not have more than one active session simultaneously (single-session policy)",
+            "All approvals must be recorded with approver identity, timestamp, and rationale",
+            "Data must be retained for a minimum of 7 years per regulatory requirements",
+            "Password must be at least 12 characters and changed every 90 days",
+            "API rate limits must be enforced: 1000 requests/minute per authenticated client",
+        ] if use_fallbacks else []
+    )
+
+    risks_out = _safe_list(ba, "risks") or _safe_list(reqs, "risks") or (
+        [
+            {"id": "RISK-001", "description": "Scope creep expanding v1 beyond agreed boundaries", "likelihood": "Medium", "impact": "High", "mitigation": "Strict change control process required"},
+            {"id": "RISK-002", "description": "Integration complexity with external third-party APIs", "likelihood": "Low", "impact": "High", "mitigation": "Dedicated integration spike in first sprint"}
+        ] if use_fallbacks else []
+    )
+
+    assumptions_out = _safe_list(ba, "assumptions") or _safe_list(reqs, "assumptions") or (
+        [
+            "Business stakeholders will be available for weekly reviews and sign-offs throughout the project",
+            "Existing infrastructure meets the minimum specifications defined in the architecture",
+            "Third-party APIs required for integration will be available in a non-production environment"
+        ] if use_fallbacks else []
+    )
+
+    dependencies_out = _safe_list(ba, "dependencies") or _safe_list(reqs, "dependencies") or (
+        [
+            {"dependency": "Identity Provider (IdP) / SSO platform", "owner": "IT Security", "required_by": "Sprint 1"},
+            {"dependency": "Cloud infrastructure provisioned", "owner": "IT Operations", "required_by": "Sprint 1"}
+        ] if use_fallbacks else []
+    )
+
+    # Functional vs Non-Functional requirements
     func_reqs = [r for r in req_list if isinstance(r, dict) and "non" not in r.get("category", "").lower()]
     nonfunc_reqs = [r for r in req_list if isinstance(r, dict) and "non" in r.get("category", "").lower()]
-    critical_reqs = [r for r in req_list if isinstance(r, dict) and r.get("priority", "").lower() == "critical"]
-
-    # Build user journeys from epics
-    user_journeys = []
-    for epic in epics[:5]:
-        if isinstance(epic, dict):
-            stories = _safe_list(epic, "stories")
-            journey_steps = []
-            for s in stories[:4]:
-                if isinstance(s, dict):
-                    role = s.get("role", "user")
-                    goal = s.get("goal", "")
-                    benefit = s.get("benefit", "")
-                    if goal:
-                        journey_steps.append(f"As a {role}, I want to {goal} so that {benefit}")
-            user_journeys.append({
-                "journey": epic.get("title", ""),
-                "description": epic.get("description", ""),
-                "steps": journey_steps,
-            })
+    standards = _safe_list((comp.get("complianceAssessment") or {}).get("standards", []))
 
     date_str = datetime.now().strftime("%B %d, %Y")
+
+    # Executive Summary text
+    exec_summary_text = ba.get("detailed_brd") or (
+        reqs.get("overview") if isinstance(reqs.get("overview"), str) else (
+            f"{project_name} is an enterprise software solution designed to address "
+            f"{project_description or 'the identified business needs'}. "
+            "This Business Requirements Document defines the complete set of business, functional, "
+            "and non-functional requirements that govern the delivery of the solution."
+        )
+    )
+
+    # Scope text
+    scope_data = ba.get("scope") or reqs.get("scope") or {
+        "in_scope": [
+            "Core business workflow automation and digitisation",
+            "User authentication, authorisation, and session management",
+            "Role-based access control (RBAC) with granular permissions",
+            "Dashboard, reporting, and analytics capabilities",
+            "Audit trail and compliance logging for all user actions",
+        ],
+        "out_of_scope": [
+            "Legacy system decommissioning (separate project)",
+            "Data migration from existing systems (addressed in migration plan)",
+            "Mobile native applications (Phase 2 deliverable)",
+        ]
+    }
+
+    # Stakeholders
+    stakeholders_out = _safe_list(ba, "stakeholders") or _safe_list(reqs, "stakeholders") or [
+        {"role": "Executive Sponsor", "responsibility": "Strategic direction and funding approval", "approval_authority": True},
+        {"role": "Product Owner", "responsibility": "Requirements prioritisation and backlog management", "approval_authority": True},
+        {"role": "Business Analyst", "responsibility": "Requirements elicitation, documentation, and sign-off", "approval_authority": True},
+        {"role": "Solution Architect", "responsibility": "Technical design and architecture governance", "approval_authority": False},
+        {"role": "Security Officer", "responsibility": "Security requirements and compliance validation", "approval_authority": True},
+    ]
+
+    # Traceability Matrix
+    traceability_matrix = []
+    for s in stories_out[:10]:
+        if isinstance(s, dict):
+            s_id = s.get("id", "US-001")
+            traceability_matrix.append({
+                "requirement_id": s.get("req_id", f"REQ-{s_id}"),
+                "story_id": s_id,
+                "title": s.get("title", s.get("goal", "")),
+                "priority": s.get("priority", "Must"),
+                "status": "APPROVED"
+            })
 
     return {
         "document_type": "BRD",
@@ -102,59 +205,21 @@ def build_brd(artifacts, project_name: str, project_description: str = "") -> Di
         "classification": "CONFIDENTIAL",
 
         "executive_summary": {
-            "overview": (
-                f"{project_name} is an AI-generated enterprise software solution designed to address "
-                f"{project_description or 'the identified business needs'}. "
-                "This Business Requirements Document defines the complete set of business, functional, "
-                "and non-functional requirements that govern the delivery of the solution. "
-                "It serves as the primary contractual reference between the business stakeholders and "
-                "the delivery team, and must be approved by all signatories before development commences."
-            ),
-            "key_objectives": [
-                "Automate and streamline the target business process to reduce manual effort by 60%+",
-                "Provide a single source of truth for all relevant business data and decisions",
-                "Enable real-time visibility into operations through dashboards and reporting",
-                "Enforce governance, compliance, and audit controls across all user actions",
-                "Deliver a scalable, secure platform that supports future business growth",
-            ],
+            "overview": exec_summary_text,
+            "key_objectives": objectives,
             "success_metrics": [
-                {"metric": "Reduction in manual processing time", "target": "≥ 60%", "measurement": "Baseline vs. post-go-live comparison"},
+                {"metric": "Reduction in manual processing time", "target": "≥ 60%", "measurement": "Baseline comparison"},
                 {"metric": "System availability (SLA)", "target": "99.9% uptime", "measurement": "Monitoring dashboards"},
-                {"metric": "User adoption rate", "target": "≥ 80% within 90 days", "measurement": "Login and active session analytics"},
-                {"metric": "Defect escape rate", "target": "< 2 P1/P2 per quarter", "measurement": "Production incident log"},
-                {"metric": "Compliance audit pass rate", "target": "100%", "measurement": "Annual external audit"},
+                {"metric": "User adoption rate", "target": "≥ 80% within 90 days", "measurement": "Active session analytics"},
             ],
         },
 
-        "scope": {
-            "in_scope": [
-                "Core business workflow automation and digitisation",
-                "User authentication, authorisation, and session management",
-                "Role-based access control (RBAC) with granular permissions",
-                "Dashboard, reporting, and analytics capabilities",
-                "Audit trail and compliance logging for all user actions",
-                "API integration layer for third-party system connectivity",
-                "Data export capabilities (CSV, PDF, JSON)",
-                "Admin console for user and system management",
-            ],
-            "out_of_scope": [
-                "Legacy system decommissioning (separate project)",
-                "Data migration from existing systems (addressed in migration plan)",
-                "Mobile native applications (Phase 2 deliverable)",
-                "Third-party system re-architecting",
-                "Hardware procurement and network infrastructure",
-            ],
-        },
-
-        "stakeholders": [
-            {"role": "Executive Sponsor", "responsibility": "Strategic direction and funding approval", "approval_authority": True},
-            {"role": "Product Owner", "responsibility": "Requirements prioritisation and backlog management", "approval_authority": True},
-            {"role": "Business Analyst", "responsibility": "Requirements elicitation, documentation, and sign-off", "approval_authority": True},
-            {"role": "Solution Architect", "responsibility": "Technical design and architecture governance", "approval_authority": False},
-            {"role": "Security Officer", "responsibility": "Security requirements and compliance validation", "approval_authority": True},
-            {"role": "End Users", "responsibility": "UAT participation and feedback", "approval_authority": False},
-            {"role": "IT Operations", "responsibility": "Infrastructure, deployment, and support", "approval_authority": False},
-        ],
+        "business_objectives": objectives,
+        "scope": scope_data,
+        "stakeholders": stakeholders_out,
+        "personas": personas_out,
+        "epics": epics_out,
+        "stories": stories_out,
 
         "functional_requirements": [
             {
@@ -163,86 +228,28 @@ def build_brd(artifacts, project_name: str, project_description: str = "") -> Di
                 "category": r.get("category", "Functional"),
                 "priority": r.get("priority", "High"),
                 "risk_level": r.get("risk_level", "Medium"),
-                "rationale": f"Required to support core business workflow for {project_name}",
-                "acceptance_criteria": f"Given the system is running, when a user performs the required action, then {r.get('description', 'the expected outcome')} completes successfully.",
+                "acceptance_criteria": r.get("acceptance_criteria", f"Given the system is running, when a user performs the required action, then {r.get('description', 'the expected outcome')} completes successfully."),
             }
             for i, r in enumerate(func_reqs[:15])
         ] or [
-            {"id": "FR-001", "description": "Users must be able to authenticate using email and password with MFA support", "category": "Functional", "priority": "Critical", "risk_level": "Low", "rationale": "Security baseline requirement", "acceptance_criteria": "Given valid credentials, when a user authenticates, then a session is created and MFA challenge is presented"},
-            {"id": "FR-002", "description": "Authenticated users must see a real-time dashboard of relevant business data", "category": "Functional", "priority": "High", "risk_level": "Low", "rationale": "Core value proposition", "acceptance_criteria": "Given an authenticated session, when the dashboard loads, then all KPIs refresh within 2 seconds"},
-            {"id": "FR-003", "description": "The system must maintain an immutable audit trail of all user actions", "category": "Compliance", "priority": "Critical", "risk_level": "High", "rationale": "Regulatory compliance requirement", "acceptance_criteria": "Given any user action, when the action completes, then an audit record is created with timestamp, user, action, and outcome"},
-            {"id": "FR-004", "description": "Administrators must be able to manage users, roles, and permissions", "category": "Functional", "priority": "High", "risk_level": "Medium", "rationale": "Operational necessity", "acceptance_criteria": "Given admin privileges, when a user is created or modified, then changes take effect immediately"},
-            {"id": "FR-005", "description": "Users must be able to export data in CSV, PDF, and JSON formats", "category": "Functional", "priority": "Medium", "risk_level": "Low", "rationale": "Business reporting requirement", "acceptance_criteria": "Given data in the system, when a user requests export, then the file downloads in the selected format within 30 seconds"},
-        ],
+            {"id": "FR-001", "description": "Users must be able to authenticate using email and password with MFA support", "category": "Functional", "priority": "Critical", "risk_level": "Low", "acceptance_criteria": "Given valid credentials, when a user authenticates, then a session is created and MFA challenge is presented"},
+            {"id": "FR-002", "description": "Authenticated users must see a real-time dashboard of relevant business data", "category": "Functional", "priority": "High", "risk_level": "Low", "acceptance_criteria": "Given an authenticated session, when the dashboard loads, then all KPIs refresh within 2 seconds"},
+            {"id": "FR-003", "description": "The system must maintain an immutable audit trail of all user actions", "category": "Compliance", "priority": "Critical", "risk_level": "High", "acceptance_criteria": "Given any user action, when the action completes, then an audit record is created with timestamp and user"},
+        ] if use_fallbacks else [],
 
-        "non_functional_requirements": nonfunc_reqs[:10] or [
+        "non_functional_requirements": nonfunc_reqs[:10] or ([
             {"id": "NFR-001", "category": "Performance", "description": "API response time must be < 200ms at p95 under normal load", "priority": "High"},
             {"id": "NFR-002", "category": "Scalability", "description": "System must support 10,000 concurrent users without degradation", "priority": "High"},
             {"id": "NFR-003", "category": "Availability", "description": "99.9% uptime SLA (< 8.7 hours downtime per year)", "priority": "Critical"},
             {"id": "NFR-004", "category": "Security", "description": "All data encrypted at rest (AES-256) and in transit (TLS 1.3)", "priority": "Critical"},
-            {"id": "NFR-005", "category": "Maintainability", "description": "Code coverage minimum 80% with automated testing in CI/CD", "priority": "High"},
-            {"id": "NFR-006", "category": "Usability", "description": "WCAG 2.1 AA accessibility compliance for all UI components", "priority": "High"},
-            {"id": "NFR-007", "category": "Compliance", "description": f"Adherence to {', '.join(str(s) for s in standards[:3]) or 'SOC 2, ISO 27001, GDPR'}", "priority": "Critical"},
-        ],
+            {"id": "NFR-005", "category": "Compliance", "description": f"Adherence to {', '.join(str(s) for s in standards[:3]) or 'SOC 2, ISO 27001, GDPR'}", "priority": "Critical"},
+        ] if use_fallbacks else []),
 
-        "business_rules": [
-            {"id": "BR-001", "rule": "A user may not have more than one active session simultaneously (single-session policy)"},
-            {"id": "BR-002", "rule": "All approvals must be recorded with approver identity, timestamp, and rationale"},
-            {"id": "BR-003", "rule": "Data must be retained for a minimum of 7 years per regulatory requirements"},
-            {"id": "BR-004", "rule": "Password must be at least 12 characters and changed every 90 days"},
-            {"id": "BR-005", "rule": "Access to sensitive data requires approval from a supervisor-level role"},
-            {"id": "BR-006", "rule": "System-generated reports must carry a digital watermark and generation timestamp"},
-            {"id": "BR-007", "rule": "API rate limits must be enforced: 1000 requests/minute per authenticated client"},
-        ],
-
-        "user_journeys": user_journeys or [
-            {
-                "journey": "User Onboarding",
-                "description": "New user registers and completes initial system setup",
-                "steps": [
-                    "Admin creates user account with assigned role",
-                    "User receives invitation email with secure setup link",
-                    "User sets password and configures MFA",
-                    "User completes profile and preference setup",
-                    "User is redirected to personalised dashboard",
-                ],
-            },
-            {
-                "journey": "Core Workflow Execution",
-                "description": "User performs the primary business process end-to-end",
-                "steps": [
-                    "User logs in and navigates to the relevant workspace",
-                    "User initiates the primary business action",
-                    "System validates inputs and applies business rules",
-                    "Workflow progresses through required approval stages",
-                    "System records outcome in audit trail and notifies stakeholders",
-                ],
-            },
-        ],
-
-        "risks": risks or [
-            {"id": "RISK-001", "description": "Scope creep expanding v1 beyond agreed boundaries", "likelihood": "Medium", "impact": "High", "mitigation": "Strict change control process with steering committee approval required"},
-            {"id": "RISK-002", "description": "Integration complexity with legacy systems", "likelihood": "Low", "impact": "High", "mitigation": "Dedicated integration spike in first sprint, fallback to file-based exchange"},
-            {"id": "RISK-003", "description": "Regulatory requirements changing during delivery", "likelihood": "Low", "impact": "Critical", "mitigation": "Monthly compliance review with legal and compliance team"},
-            {"id": "RISK-004", "description": "Key stakeholder availability for UAT", "likelihood": "Medium", "impact": "Medium", "mitigation": "Schedule UAT dates in project kickoff, identify backup approvers"},
-        ],
-
-        "assumptions": assumptions or [
-            "Business stakeholders will be available for weekly reviews and sign-offs throughout the project",
-            "Existing infrastructure (servers, network, databases) meets the minimum specifications defined in the architecture",
-            "Third-party APIs required for integration will be available in a non-production environment by week 3",
-            "The data migration approach and any required data cleansing will be agreed within the first two weeks",
-            "User acceptance testing resources (business SMEs) will be available for a minimum of 2 weeks",
-            "Security scanning tools (SAST/DAST) will be procured and configured by the development team",
-        ],
-
-        "dependencies": [
-            {"dependency": "Identity Provider (IdP) / SSO platform", "owner": "IT Security", "required_by": "Week 3"},
-            {"dependency": "Cloud infrastructure provisioned", "owner": "IT Operations", "required_by": "Week 2"},
-            {"dependency": "Third-party API credentials and documentation", "owner": "Vendor", "required_by": "Week 3"},
-            {"dependency": "Test data set approved by Data Governance", "owner": "Data Team", "required_by": "Week 4"},
-            {"dependency": "UAT environment configured and accessible", "owner": "IT Operations", "required_by": "Week 8"},
-        ],
+        "business_rules": rules_out,
+        "risks": risks_out,
+        "assumptions": assumptions_out,
+        "dependencies": dependencies_out,
+        "traceability_matrix": traceability_matrix,
 
         "approval_matrix": [
             {"section": "Executive Summary & Scope", "approver": "Executive Sponsor", "status": "APPROVED"},
