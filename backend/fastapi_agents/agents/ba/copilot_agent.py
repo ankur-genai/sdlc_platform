@@ -242,8 +242,9 @@ class BACopilotAgent:
         # Live LLM execution when API key is configured
         try:
             raw_response = self.llm.generate_json(
-                system_prompt=BA_COPILOT_SYSTEM_PROMPT,
-                prompt=f"Current BA Artifact:\n{json.dumps(current_doc, indent=2)}\n\nUser Instruction:\n{prompt}"
+                system=BA_COPILOT_SYSTEM_PROMPT,
+                prompt=f"Current BA Artifact:\n{json.dumps(current_doc, indent=2)}\n\nUser Instruction:\n{prompt}",
+                schema=None
             )
             return raw_response
         except Exception as e:
