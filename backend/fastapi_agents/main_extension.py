@@ -2669,7 +2669,7 @@ def get_pipeline_status(
     any_waiting = False
  
     active_stages = set()
-    if project.manual_stages:
+    if getattr(project, 'manual_stages', None):
         active_stages.update(project.manual_stages)
     else:
         if project.project_type == "web-app":
