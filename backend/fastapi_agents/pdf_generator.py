@@ -987,7 +987,7 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
             Paragraph("<b>Success Metrics & KPIs:</b>", styles_map['h2']),
             Spacer(1, 4),
             Table([
-                [Paragraph("<b>Metric</b>", styles_map['cell_bold']), Paragraph("<b>Target SLA</b>", styles_map['cell_bold']), Paragraph("<b>Measurement Method</b>", styles_map['cell_bold'])],
+                [Paragraph("<b>Metric</b>", styles_map['header']), Paragraph("<b>Target SLA</b>", styles_map['header']), Paragraph("<b>Measurement Method</b>", styles_map['header'])],
                 *metric_rows
             ], colWidths=[200, 120, 184], style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
         ]),
@@ -1006,13 +1006,13 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
         ] or [Paragraph("• Core operational objective defined in project scope.", styles_map['bullet'])]),
         ("Functional Requirements", lambda: [
             Table([
-                [Paragraph("<b>Req ID</b>", styles_map['cell_bold']), Paragraph("<b>Description</b>", styles_map['cell_bold']), Paragraph("<b>Category</b>", styles_map['cell_bold']), Paragraph("<b>Priority</b>", styles_map['cell_bold'])],
+                [Paragraph("<b>Req ID</b>", styles_map['header']), Paragraph("<b>Description</b>", styles_map['header']), Paragraph("<b>Category</b>", styles_map['header']), Paragraph("<b>Priority</b>", styles_map['header'])],
                 *func_rows
             ], colWidths=[70, 254, 90, 90], style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
         ]),
         ("Non-Functional Requirements", lambda: [
             Table([
-                [Paragraph("<b>NFR ID</b>", styles_map['cell_bold']), Paragraph("<b>Category</b>", styles_map['cell_bold']), Paragraph("<b>Specification & Benchmark</b>", styles_map['cell_bold']), Paragraph("<b>Priority</b>", styles_map['cell_bold'])],
+                [Paragraph("<b>NFR ID</b>", styles_map['header']), Paragraph("<b>Category</b>", styles_map['header']), Paragraph("<b>Specification & Benchmark</b>", styles_map['header']), Paragraph("<b>Priority</b>", styles_map['header'])],
                 *nonfunc_rows
             ], colWidths=[70, 90, 254, 90], style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
         ]),
@@ -1021,13 +1021,13 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
         ] or [Paragraph("• Standard enterprise business rule enforcement.", styles_map['bullet'])]),
         ("Epics Breakdown", lambda: [
             Table([
-                [Paragraph("<b>Epic ID</b>", styles_map['cell_bold']), Paragraph("<b>Title & Description</b>", styles_map['cell_bold']), Paragraph("<b>Story Count</b>", styles_map['cell_bold'])],
+                [Paragraph("<b>Epic ID</b>", styles_map['header']), Paragraph("<b>Title & Description</b>", styles_map['header']), Paragraph("<b>Story Count</b>", styles_map['header'])],
                 *epic_rows
             ], colWidths=[80, 344, 80], style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
         ]),
         ("Detailed User Stories & Acceptance Criteria", lambda: [
             Table([
-                [Paragraph("<b>Story ID</b>", styles_map['cell_bold']), Paragraph("<b>User Story Statement & Gherkin Criteria</b>", styles_map['cell_bold']), Paragraph("<b>Priority / Points</b>", styles_map['cell_bold'])],
+                [Paragraph("<b>Story ID</b>", styles_map['header']), Paragraph("<b>User Story Statement & Gherkin Criteria</b>", styles_map['header']), Paragraph("<b>Priority / Points</b>", styles_map['header'])],
                 *story_rows
             ], colWidths=[80, 324, 100], style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
         ]),
@@ -1037,13 +1037,13 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
             Spacer(1, 8),
             Paragraph("<b>System & Vendor Dependencies:</b>", styles_map['h2']),
             Table([
-                [Paragraph("<b>Dependency</b>", styles_map['cell_bold']), Paragraph("<b>Owner</b>", styles_map['cell_bold']), Paragraph("<b>Required Target</b>", styles_map['cell_bold'])],
+                [Paragraph("<b>Dependency</b>", styles_map['header']), Paragraph("<b>Owner</b>", styles_map['header']), Paragraph("<b>Required Target</b>", styles_map['header'])],
                 *dep_rows
             ], colWidths=[240, 134, 130], style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
         ]),
         ("Requirements Traceability Matrix", lambda: [
             Table([
-                [Paragraph("<b>Requirement ID</b>", styles_map['cell_bold']), Paragraph("<b>Mapped Story ID</b>", styles_map['cell_bold']), Paragraph("<b>Title / Specification</b>", styles_map['cell_bold']), Paragraph("<b>Status</b>", styles_map['cell_bold'])],
+                [Paragraph("<b>Requirement ID</b>", styles_map['header']), Paragraph("<b>Mapped Story ID</b>", styles_map['header']), Paragraph("<b>Title / Specification</b>", styles_map['header']), Paragraph("<b>Status</b>", styles_map['header'])],
                 *trace_rows
             ], colWidths=[100, 100, 204, 100], style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
         ]),
@@ -1052,7 +1052,7 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
         ] or [Paragraph("• Standard risk management controls applied.", styles_map['bullet'])]),
         ("Approval & Revision History", lambda: [
             Table([
-                [Paragraph("<b>Role</b>", styles_map['cell_bold']), Paragraph("<b>Approver</b>", styles_map['cell_bold']), Paragraph("<b>Status</b>", styles_map['cell_bold']), Paragraph("<b>Date</b>", styles_map['cell_bold'])],
+                [Paragraph("<b>Role</b>", styles_map['header']), Paragraph("<b>Approver</b>", styles_map['header']), Paragraph("<b>Status</b>", styles_map['header']), Paragraph("<b>Date</b>", styles_map['header'])],
                 *approval_rows
             ], colWidths=[130, 154, 110, 110], style=[('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('BACKGROUND', (0,0), (-1,0), COLOR_LIGHT_BG), ('PADDING', (0,0), (-1,-1), 6)])
         ])

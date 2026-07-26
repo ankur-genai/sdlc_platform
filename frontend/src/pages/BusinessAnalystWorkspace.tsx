@@ -162,16 +162,7 @@ export function BusinessAnalystWorkspace() {
     };
   }, [storiesArtifactData]);
 
-  // Fetch BRD PDF Status from DB
-  useEffect(() => {
-    if (!projectId) return;
-    fetch(buildApiUrl(`/projects/${projectId}/brd-pdf-status`))
-      .then(res => res.json())
-      .then(data => {
-        if (data.status) setPdfStatus(data.status);
-      })
-      .catch(() => setPdfStatus('synchronized'));
-  }, [projectId]);
+  // BRD PDF Status starts as 'synchronized' by default. Out of date banner triggers ONLY on actual Copilot changes applied.
 
   // Dynamic Summary Metrics (100% calculated reactively from workspace artifact — ZERO hardcoded numbers)
   const metrics = useMemo(() => {
@@ -332,7 +323,7 @@ export function BusinessAnalystWorkspace() {
 
       setActiveProposal(null);
       setPdfStatus('out_of_date');
-      setSyncNotification("✅ Business Analyst Workspace updated successfully. User Stories, Epics, BRD/SRS, Process Flows, and downstream workspaces have been synchronized.");
+      setSyncNotification("Business Analyst Workspace updated successfully. User Stories, Epics, BRD/SRS, Process Flows, and downstream workspaces have been synchronized.");
       setTimeout(() => setSyncNotification(null), 8000);
       reload();
     } catch (err: any) {
@@ -353,7 +344,7 @@ export function BusinessAnalystWorkspace() {
                 ? 'bg-status-success/15 text-status-success border-status-success/30' 
                 : 'bg-status-warning/15 text-status-warning border-status-warning/30 animate-pulse'
             }`}>
-              {pdfStatus === 'synchronized' ? '🟢 BRD Synchronized' : '🟡 BRD Out of Date'}
+              {pdfStatus === 'synchronized' ? 'BRD Synchronized' : 'BRD Out of Date'}
             </span>
           </div>
           <p className="text-xs text-text-muted mt-1">
@@ -421,7 +412,6 @@ export function BusinessAnalystWorkspace() {
       {pdfStatus === 'out_of_date' && (
         <div className="p-3 bg-status-warning/15 border border-status-warning/30 text-status-warning rounded-xl text-xs md:text-sm font-semibold flex items-center justify-between shadow-sm animate-pulse">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-status-warning flex-shrink-0" />
             <span>Business Analyst artifacts have changed. Your exported BRD is out of date. Please regenerate the PDF to include the latest approved changes.</span>
           </div>
           <button
@@ -429,7 +419,7 @@ export function BusinessAnalystWorkspace() {
             disabled={generatingPdf}
             className="bg-status-warning text-dark-bg font-extrabold px-3.5 py-1.5 rounded-lg text-xs hover:bg-status-warning/90 transition-colors flex-shrink-0 ml-3 shadow cursor-pointer"
           >
-            {generatingPdf ? 'Generating PDF...' : '🔄 Regenerate BRD PDF'}
+            {generatingPdf ? 'Generating PDF...' : 'Regenerate BRD PDF'}
           </button>
         </div>
       )}
@@ -437,7 +427,6 @@ export function BusinessAnalystWorkspace() {
       {/* Workspace Change Success Notification Banner */}
       {syncNotification && (
         <div className="p-3 bg-status-success/15 border border-status-success/30 text-status-success rounded-xl text-xs md:text-sm font-semibold flex items-center gap-2 shadow-sm">
-          <CheckCircle2 className="h-5 w-5 text-status-success flex-shrink-0" />
           <span>{syncNotification}</span>
         </div>
       )}
@@ -556,7 +545,7 @@ export function BusinessAnalystWorkspace() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search user stories by ID, title, goal, or role..."
-                className="w-full bg-dark-surface border border-dark-border text-text-primary pl-9 pr-3 py-1.5 rounded-lg text-xs focus:outline-none focus:border-ey-yellow/60"
+                className="w-full bg-slate-900 border border-slate-700 text-slate-100 placeholder-slate-400 pl-9 pr-3 py-1.5 rounded-lg text-xs focus:outline-none focus:border-ey-yellow/60"
               />
             </div>
             
@@ -568,11 +557,11 @@ export function BusinessAnalystWorkspace() {
               <select
                 value={selectedEpicFilter}
                 onChange={(e) => setSelectedEpicFilter(e.target.value)}
-                className="bg-dark-surface border border-dark-border text-text-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
+                className="bg-slate-900 border border-slate-700 text-slate-100 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
               >
-                <option value="all">All Epics</option>
+                <option value="all" className="bg-slate-900 text-slate-100">All Epics</option>
                 {storiesData.epics.map((ep: any, i: number) => (
-                  <option key={i} value={ep.title}>{ep.title}</option>
+                  <option key={i} value={ep.title} className="bg-slate-900 text-slate-100">{ep.title}</option>
                 ))}
               </select>
 
@@ -582,13 +571,13 @@ export function BusinessAnalystWorkspace() {
               <select
                 value={selectedPriorityFilter}
                 onChange={(e) => setSelectedPriorityFilter(e.target.value)}
-                className="bg-dark-surface border border-dark-border text-text-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
+                className="bg-slate-900 border border-slate-700 text-slate-100 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
               >
-                <option value="all">All Priorities</option>
-                <option value="must">Must</option>
-                <option value="should">Should</option>
-                <option value="could">Could</option>
-                <option value="wont">Won't</option>
+                <option value="all" className="bg-slate-900 text-slate-100">All Priorities</option>
+                <option value="must" className="bg-slate-900 text-slate-100">Must</option>
+                <option value="should" className="bg-slate-900 text-slate-100">Should</option>
+                <option value="could" className="bg-slate-900 text-slate-100">Could</option>
+                <option value="wont" className="bg-slate-900 text-slate-100">Won't</option>
               </select>
             </div>
           </div>
@@ -846,19 +835,9 @@ export function BusinessAnalystWorkspace() {
           </div>
 
           <Card className="p-6 bg-dark-card border-dark-border space-y-6">
-            <div className="border-b border-dark-border pb-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-extrabold text-text-primary">Business Requirements Document (BRD) & SRS</h3>
-                <p className="text-xs text-text-muted mt-0.5">Synthesized directly from live workspace artifacts — Single Source of Truth.</p>
-              </div>
-              <button
-                onClick={handleExportPdf}
-                disabled={generatingPdf}
-                className="bg-ey-yellow hover:bg-ey-yellow/90 text-dark-bg font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 shadow"
-              >
-                <Download className="h-3.5 w-3.5" />
-                <span>Export BRD PDF</span>
-              </button>
+            <div className="border-b border-dark-border pb-4">
+              <h3 className="text-lg font-extrabold text-text-primary">Business Requirements Document (BRD) & SRS</h3>
+              <p className="text-xs text-text-muted mt-0.5">Synthesized directly from live workspace artifacts — Single Source of Truth.</p>
             </div>
 
             {/* Markdown / Formatted Document View */}

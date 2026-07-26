@@ -173,24 +173,7 @@ export function RequirementsWorkspace() {
   const reqData = getRequirements();
   const approvalStatus = getApprovalStatus('requirements_doc');
 
-  // Fetch SRS PDF Status
-  useEffect(() => {
-    const fetchPdfStatus = async () => {
-      if (!projectId) return;
-      try {
-        const res = await fastApiRequest(`/projects/${projectId}/pdf-status`, { method: 'GET' });
-        if (res && res.status) {
-          setPdfStatus(res.status);
-          if (res.status === 'out_of_date') {
-            setShowOutOfDateBanner(true);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load SRS PDF status:', err);
-      }
-    };
-    fetchPdfStatus();
-  }, [projectId]);
+  // SRS PDF Status starts as 'synchronized' by default. Out of date banner triggers ONLY on actual Copilot changes applied.
 
   // Fetch Provider
   useEffect(() => {
@@ -435,7 +418,7 @@ export function RequirementsWorkspace() {
           deleted: activeProposal.deleted || []
         }
       });
-      setSyncSuccessNotification("✅ Requirements Workspace updated successfully. Functional, Non-Functional, Risks, and downstream workspaces have been synchronized.");
+      setSyncSuccessNotification("Requirements Workspace updated successfully. Functional, Non-Functional, Risks, and downstream workspaces have been synchronized.");
       setTimeout(() => setSyncSuccessNotification(null), 8000);
       setPdfStatus('out_of_date');
       setShowOutOfDateBanner(true);
@@ -473,7 +456,7 @@ export function RequirementsWorkspace() {
                 ? 'bg-status-success/15 text-status-success border-status-success/30' 
                 : 'bg-status-warning/15 text-status-warning border-status-warning/30 animate-pulse'
             }`}>
-              {pdfStatus === 'synchronized' ? '🟢 SRS Synchronized' : '🟡 SRS Out of Date'}
+              {pdfStatus === 'synchronized' ? 'SRS Synchronized' : 'SRS Out of Date'}
             </span>
           </div>
           <p className="text-xs text-text-muted mt-1">
@@ -483,10 +466,6 @@ export function RequirementsWorkspace() {
 
         {/* Action Controls & Export Dropdown */}
         <div className="flex items-center gap-3">
-          {projectId && (
-            <RegenerateButton projectId={projectId} agentName="Requirement Agent" onRegenerated={reload} />
-          )}
-
           <button
             onClick={() => reload()}
             className="btn-ghost py-2 px-3 text-xs flex items-center gap-1.5 text-text-secondary hover:text-text-primary"
@@ -545,7 +524,6 @@ export function RequirementsWorkspace() {
       {pdfStatus === 'out_of_date' && (
         <div className="p-3 bg-status-warning/15 border border-status-warning/30 text-status-warning rounded-xl text-xs md:text-sm font-semibold flex items-center justify-between shadow-sm animate-pulse">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-status-warning flex-shrink-0" />
             <span>Requirements artifacts have changed. Your exported SRS is out of date. Please regenerate the PDF to include the latest approved changes.</span>
           </div>
           <button
@@ -553,7 +531,7 @@ export function RequirementsWorkspace() {
             disabled={generatingPdf}
             className="bg-status-warning text-dark-bg font-extrabold px-3.5 py-1.5 rounded-lg text-xs hover:bg-status-warning/90 transition-colors flex-shrink-0 ml-3 shadow cursor-pointer"
           >
-            {generatingPdf ? 'Generating PDF...' : '🔄 Regenerate SRS PDF'}
+            {generatingPdf ? 'Generating PDF...' : 'Regenerate SRS PDF'}
           </button>
         </div>
       )}
@@ -561,7 +539,6 @@ export function RequirementsWorkspace() {
       {/* Workspace Change Success Notification Banner */}
       {syncSuccessNotification && (
         <div className="p-3 bg-status-success/15 border border-status-success/30 text-status-success rounded-xl text-xs md:text-sm font-semibold flex items-center gap-2 shadow-sm">
-          <CheckCircle2 className="h-5 w-5 text-status-success flex-shrink-0" />
           <span>{syncSuccessNotification}</span>
         </div>
       )}
@@ -680,7 +657,7 @@ export function RequirementsWorkspace() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={`Search ${activeTab === 'functional' ? 'functional' : 'non-functional'} requirements by ID, title, description...`}
-                className="w-full bg-dark-surface border border-dark-border text-text-primary pl-9 pr-3 py-1.5 rounded-lg text-xs focus:outline-none focus:border-ey-yellow/60"
+                className="w-full bg-slate-900 border border-slate-700 text-slate-100 placeholder-slate-400 pl-9 pr-3 py-1.5 rounded-lg text-xs focus:outline-none focus:border-ey-yellow/60"
               />
             </div>
             
@@ -692,12 +669,12 @@ export function RequirementsWorkspace() {
               <select
                 value={selectedPriorityFilter}
                 onChange={(e) => setSelectedPriorityFilter(e.target.value)}
-                className="bg-dark-surface border border-dark-border text-text-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
+                className="bg-slate-900 border border-slate-700 text-slate-100 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
               >
-                <option value="all">All Priorities</option>
-                <option value="must">Must / Critical</option>
-                <option value="should">Should / High</option>
-                <option value="could">Could / Low</option>
+                <option value="all" className="bg-slate-900 text-slate-100">All Priorities</option>
+                <option value="must" className="bg-slate-900 text-slate-100">Must / Critical</option>
+                <option value="should" className="bg-slate-900 text-slate-100">Should / High</option>
+                <option value="could" className="bg-slate-900 text-slate-100">Could / Low</option>
               </select>
 
               <div className="flex items-center gap-1 text-xs text-text-muted ml-2">
@@ -706,12 +683,12 @@ export function RequirementsWorkspace() {
               <select
                 value={selectedRiskFilter}
                 onChange={(e) => setSelectedRiskFilter(e.target.value)}
-                className="bg-dark-surface border border-dark-border text-text-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
+                className="bg-slate-900 border border-slate-700 text-slate-100 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
               >
-                <option value="all">All Risk Levels</option>
-                <option value="high">High Risk</option>
-                <option value="medium">Medium Risk</option>
-                <option value="low">Low Risk</option>
+                <option value="all" className="bg-slate-900 text-slate-100">All Risk Levels</option>
+                <option value="high" className="bg-slate-900 text-slate-100">High Risk</option>
+                <option value="medium" className="bg-slate-900 text-slate-100">Medium Risk</option>
+                <option value="low" className="bg-slate-900 text-slate-100">Low Risk</option>
               </select>
             </div>
           </div>
