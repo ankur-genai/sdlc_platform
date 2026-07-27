@@ -1004,6 +1004,8 @@ export function VideoGenerationWorkspace() {
   const [showDiagram, setShowDiagram] = useState(false);
   const [showScript, setShowScript] = useState(false);
   const [scriptDraft, setScriptDraft] = useState('');
+  const [initialScriptDraft, setInitialScriptDraft] = useState('');
+  const [lastScriptSavedTime, setLastScriptSavedTime] = useState<string | null>(null);
   const [aiActionLoading, setAiActionLoading] = useState<AiAction | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfMode, setPdfMode] = useState(false); // when true, render from PDF instead of slides
@@ -1197,16 +1199,18 @@ export function VideoGenerationWorkspace() {
 
   // ── AI action ─────────────────────────────────────────────────────────────
   // Editable narration script, scoped to the currently-selected slide range.
-  const scriptSlideMarker = (i: number, title: string) => `=== Slide ${i + 1}: ${title || 'Untitled'} ===`;
+  const scriptSlideMarker = (i: number, title: string) => `=== Slide ${i + 1} • ${title || 'Untitled'} ===\n[Voice-over Narration]`;
   const openScriptEditor = useCallback(() => {
     const indices = selectedSlideIndices ? [...selectedSlideIndices].sort((a, b) => a - b) : slides.map((_, i) => i);
     const draft = indices.map(i => `${scriptSlideMarker(i, slides[i]?.title)}\n${slides[i]?.speaker_notes || ''}`).join('\n\n');
     setScriptDraft(draft);
+    setInitialScriptDraft(draft);
     setShowScript(true);
   }, [slides, selectedSlideIndices]);
 
-  // Strips a leading "=== Slide N: Title ===" marker line if still present
-  const stripMarkerLine = (block: string) => block.replace(/^===\s*Slide\s+\d+:[^\n]*===\s*\n?/i, '').trim();
+  // Strips a leading "=== Slide N • Title ===" marker line if still present
+  const stripMarkerLine = (block: string) =>
+    block.replace(/^===\s*Slide\s+\d+[^=]*===\s*\n?(\[Voice-over Narration\]\s*\n?)?/i, '').trim();
 
   const saveScriptEditor = useCallback(async () => {
     const indices = selectedSlideIndices ? [...selectedSlideIndices].sort((a, b) => a - b) : slides.map((_, i) => i);
@@ -1219,11 +1223,11 @@ export function VideoGenerationWorkspace() {
       updatedSlides = slides.map((s, i) => i === idx ? { ...s, speaker_notes: text } : s);
     } else {
       // Multiple slides: split on marker lines
-      let blocks = scriptDraft.split(/\n(?=\s*===\s*Slide\s+\d+:)/i).map(b => b.trim()).filter(Boolean);
+      let blocks = scriptDraft.split(/\n(?=\s*===\s*Slide\s+\d+)/i).map(b => b.trim()).filter(Boolean);
       let notesByIndex = new Map<number, string>();
       blocks.forEach(block => {
-        const match = block.match(/^===\s*Slide\s+(\d+):[^\n]*===\s*\n?([\s\S]*)$/i);
-        if (match) notesByIndex.set(parseInt(match[1], 10) - 1, match[2].trim());
+        const match = block.match(/^===\s*Slide\s+(\d+)[^=]*===\s*\n?(\[Voice-over Narration\]\s*\n?)?([\s\S]*)$/i);
+        if (match) notesByIndex.set(parseInt(match[1], 10) - 1, match[3].trim());
       });
 
       if (notesByIndex.size === 0 && blocks.length === indices.length) {
@@ -1244,6 +1248,9 @@ export function VideoGenerationWorkspace() {
       localStorage.setItem(`slides_${projectId}`, JSON.stringify(updatedSlides));
     }
 
+    const formattedTime = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) +
+      ' • ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
     // 2. Persist to PostgreSQL database as Single Source of Truth
     if (projectId) {
       try {
@@ -1252,19 +1259,23 @@ export function VideoGenerationWorkspace() {
           body: { slides: updatedSlides },
         });
         if (res.success) {
+          setInitialScriptDraft(scriptDraft);
+          setLastScriptSavedTime(formattedTime);
           setShowScript(false);
-          addToast('Script saved to database successfully', 'success');
+          addToast('✔ Voice-over narration saved successfully. This narration will be used for the next video generation.', 'success');
           return;
         }
       } catch (err) {
         console.error('Database save script failed:', err);
-        addToast('Failed to save script to database', 'error');
+        addToast('Failed to save voice-over narration to database', 'error');
         return;
       }
     }
 
+    setInitialScriptDraft(scriptDraft);
+    setLastScriptSavedTime(formattedTime);
     setShowScript(false);
-    addToast('Narration script updated', 'success');
+    addToast('✔ Voice-over narration saved successfully. This narration will be used for the next video generation.', 'success');
   }, [scriptDraft, slides, selectedSlideIndices, projectId, setSlides, addToast]);
 
   // Regenerate just the active slide's diagram — never touches other slides.
@@ -2372,6 +2383,25 @@ export function VideoGenerationWorkspace() {
                 </>
               )}
 
+              {/* Narration confirmation status in Generate Modal */}
+              <div className={`rounded-xl border p-3.5 flex items-center justify-between text-xs ${
+                scriptDraft.trim() !== initialScriptDraft.trim() && showScript
+                  ? 'border-ey-yellow/40 bg-ey-yellow/10'
+                  : 'border-status-success/30 bg-status-success/5'
+              }`}>
+                {scriptDraft.trim() !== initialScriptDraft.trim() && showScript ? (
+                  <div className="flex items-center gap-2 text-ey-yellow font-medium">
+                    <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                    <span>⚠ Unsaved narration changes detected. Save your narration before generating the video.</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-status-success font-medium">
+                    <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                    <span>✔ Video will use the latest saved voice-over narration.</span>
+                  </div>
+                )}
+              </div>
+
               {/* Summary */}
               <div className="flex items-center gap-3 rounded-lg border border-dark-border bg-dark-bg p-3">
                 <Palette className="h-4 w-4 text-text-muted flex-shrink-0" />
@@ -2400,7 +2430,11 @@ export function VideoGenerationWorkspace() {
 
             <div className="flex gap-3 border-t border-dark-border px-6 py-4">
               <button onClick={() => setShowGenerateModal(false)} className="btn-secondary flex-1">Cancel</button>
-              <button onClick={startRender} className="btn-primary flex-1">
+              <button
+                onClick={startRender}
+                disabled={rendering || slides.length === 0 || selectedSlides.length === 0 || (scriptDraft.trim() !== initialScriptDraft.trim() && showScript)}
+                className="btn-primary flex-1 disabled:opacity-40"
+              >
                 <Sparkles className="mr-2 h-4 w-4" />
                 {pdfMode ? 'Generate from PDF' : genMode==='presentation_only' ? 'Generate PPTX' : genMode==='video_only' ? 'Render Video' : 'Generate All'}
               </button>
@@ -2419,23 +2453,85 @@ export function VideoGenerationWorkspace() {
       {showDiagram && <DiagramGenerator projectId={projectId} onClose={() => setShowDiagram(false)}
         onInsert={code => { if (activeSlide) updateSlide(activeIdx, 'speaker_notes', (activeSlide.speaker_notes||'') + '\n\n[DIAGRAM]\n' + code); }} />}
 
-      {/* Narration script — scoped to the currently-selected slide range */}
+      {/* 🎙️ Final Video Narration Script Modal — scoped to the currently-selected slide range */}
       {showScript && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl border border-dark-border bg-dark-card shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between border-b border-dark-border px-6 py-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-3xl rounded-2xl border border-dark-border bg-dark-card shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between border-b border-dark-border px-6 py-4 bg-dark-bg/50">
               <div>
-                <h2 className="text-lg font-bold text-text-primary">Narration Script</h2>
-                <p className="text-xs text-text-muted mt-0.5">Editing {selectedSlides.length} of {slides.length} slides — edits apply per-slide when saved, before video generation.</p>
+                <h2 className="text-lg font-bold text-text-primary flex items-center gap-2">
+                  🎙️ Final Video Narration
+                </h2>
+                <p className="text-xs text-text-muted mt-1">
+                  Edit the narration that will be spoken during the final AI-generated presentation video. Any changes you save here will be used as the voice-over when generating the video.
+                </p>
               </div>
-              <button onClick={() => setShowScript(false)} className="rounded-lg p-2 text-text-muted hover:bg-dark-bg"><X className="h-5 w-5" /></button>
+              <button onClick={() => setShowScript(false)} className="rounded-lg p-2 text-text-muted hover:bg-dark-bg">
+                <X className="h-5 w-5" />
+              </button>
             </div>
-            <div className="p-6 space-y-4">
-              <textarea value={scriptDraft} onChange={e => setScriptDraft(e.target.value)} rows={16}
-                className="w-full rounded-lg border border-dark-border bg-dark-bg p-3 text-sm font-mono text-text-primary focus:border-ey-yellow focus:outline-none" />
-              <div className="flex justify-end gap-2">
-                <button onClick={() => setShowScript(false)} className="btn-secondary text-sm">Cancel</button>
-                <button onClick={saveScriptEditor} className="btn-primary text-sm">Save Script</button>
+
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {/* Status Card */}
+              {scriptDraft.trim() === initialScriptDraft.trim() ? (
+                <div className="rounded-xl border border-status-success/30 bg-status-success/5 p-3.5 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-status-success flex-shrink-0" />
+                    <span className="font-bold text-status-success">Voice-over Status:</span>
+                    <span className="text-text-primary font-medium">✔ Saved to Project Database</span>
+                  </div>
+                  <div className="text-[11px] text-text-muted flex items-center gap-3">
+                    <span>Source: <strong className="text-text-primary">Database (Single Source of Truth)</strong></span>
+                    {lastScriptSavedTime && (
+                      <>
+                        <span>•</span>
+                        <span>Last Updated: <strong className="text-text-primary">{lastScriptSavedTime}</strong></span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-ey-yellow/40 bg-ey-yellow/10 p-3.5 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-ey-yellow flex-shrink-0 animate-bounce" />
+                    <span className="font-bold text-ey-yellow">● Unsaved Changes</span>
+                  </div>
+                  <span className="text-text-primary font-medium text-[11px]">
+                    Your edits have not been saved yet. Save before generating the video.
+                  </span>
+                </div>
+              )}
+
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-xs font-semibold text-text-primary uppercase tracking-wider">
+                    Voice-over Script Editor ({selectedSlides.length} of {slides.length} slides)
+                  </label>
+                  <span className="text-[10px] text-text-muted">
+                    Format: Keep slide headers intact to map per-slide narration
+                  </span>
+                </div>
+                <textarea
+                  value={scriptDraft}
+                  onChange={e => setScriptDraft(e.target.value)}
+                  rows={14}
+                  className="w-full rounded-xl border border-dark-border bg-dark-bg p-4 text-xs font-mono text-text-primary focus:border-ey-yellow focus:outline-none transition-all leading-relaxed shadow-inner"
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-dark-border px-6 py-4 bg-dark-bg/30 flex items-center justify-between">
+              <p className="text-[11px] text-text-muted font-medium flex items-center gap-1.5">
+                <Info className="h-3.5 w-3.5 text-ey-yellow" />
+                Only the saved narration will be used during AI video generation.
+              </p>
+              <div className="flex gap-2.5">
+                <button onClick={() => setShowScript(false)} className="btn-secondary text-sm px-4">
+                  Cancel
+                </button>
+                <button onClick={saveScriptEditor} className="btn-primary text-sm px-5 flex items-center gap-1.5">
+                  💾 Save Voice-over
+                </button>
               </div>
             </div>
           </div>
