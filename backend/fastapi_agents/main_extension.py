@@ -2637,6 +2637,7 @@ _STAGE_LABELS: dict[str, str] = {
     "Backend Agent":              "Backend",
     "Testing Agent":              "Testing",
     "Documentation Agent":        "Documentation",
+    "Development Studio":         "Development Studio",
 }
  
  

@@ -54,6 +54,7 @@ PIPELINE: list[str] = [
     AgentName.BACKEND_AGENT.value,
     AgentName.TESTING_AGENT.value,
     AgentName.DOCUMENTATION_AGENT.value,
+    AgentName.DEVELOPMENT_STUDIO.value,
     AgentName.PRESENTATION_VIDEO_AGENT.value,
 ]
 
@@ -129,6 +130,10 @@ _AGENT_CONFIG: dict[str, dict[str, Any]] = {
         "generate": True, "artifact_type": ArtifactType.DOCUMENTATION.value,
         "approval": False, "stage": "Documentation",
     },
+    AgentName.DEVELOPMENT_STUDIO.value: {
+        "generate": True, "artifact_type": ArtifactType.REACT_CODE.value,
+        "approval": False, "stage": "Development Studio",
+    },
 }
 
 
@@ -168,6 +173,10 @@ _AGENT_DEPENDENCIES: dict[str, list[str]] = {
     AgentName.DOCUMENTATION_AGENT.value: [
         AgentName.SOLUTION_ARCHITECT_AGENT.value,
         AgentName.DATABASE_AGENT.value,
+        AgentName.FRONTEND_AGENT.value,
+        AgentName.BACKEND_AGENT.value,
+    ],
+    AgentName.DEVELOPMENT_STUDIO.value: [
         AgentName.FRONTEND_AGENT.value,
         AgentName.BACKEND_AGENT.value,
     ],
@@ -821,12 +830,13 @@ class PipelineExecutor:
             if AgentName.FRONTEND_AGENT.value in run_set:
                 _auto_approve("ui_style_selection")
 
-            # Development, testing, documentation
+            # Development, testing, documentation, development studio
             for agent_name in (
                 AgentName.FRONTEND_AGENT.value,
                 AgentName.BACKEND_AGENT.value,
                 AgentName.TESTING_AGENT.value,
                 AgentName.DOCUMENTATION_AGENT.value,
+                AgentName.DEVELOPMENT_STUDIO.value,
             ):
                 if not await _stage(agent_name):
                     return
