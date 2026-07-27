@@ -27,6 +27,7 @@ from .backend.agent import BackendAgent
 from .business_analyst.agent import BusinessAnalystAgent
 from .compliance.agent import ComplianceArchitectAgent
 from .database.agent import DatabaseAgent
+from .developer_studio.agent import DeveloperStudioAgent
 from .documentation.agent import DocumentationAgent
 from .frontend.agent import FrontendAgent
 from .presentation.agent import PresentationVideoAgent
@@ -54,6 +55,7 @@ class AgentRegistry:
         AgentName.BACKEND_AGENT.value: BackendAgent,
         AgentName.TESTING_AGENT.value: TestingAgent,
         AgentName.DOCUMENTATION_AGENT.value: DocumentationAgent,
+        AgentName.DEVELOPMENT_STUDIO.value: DeveloperStudioAgent,
     }
 
     @classmethod
