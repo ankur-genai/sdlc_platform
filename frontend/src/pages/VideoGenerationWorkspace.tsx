@@ -11,7 +11,7 @@ import {
   Undo2, Redo2, GitBranch, FileText, Film,
   Layout, AlignLeft, Maximize2, MessageSquare, Send,
   Lightbulb, Layers, Workflow, Shield, Database, Network, DollarSign,
-  TrendingUp, Rocket, Lock, Users, Target, Cloud, Check, ArrowRight,
+  TrendingUp, Rocket, Lock, Users, Target, Cloud, Check, ArrowRight, Info,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
