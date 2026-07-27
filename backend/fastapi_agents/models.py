@@ -175,6 +175,8 @@ class AgentName(str, enum.Enum):
 
     BACKEND_AGENT = "Backend Agent"
 
+    DEVELOPMENT_STUDIO = "Development Studio"
+
     CODE_REVIEW_AGENT = "Code Review Agent"
 
     TESTING_AGENT = "Testing Agent"

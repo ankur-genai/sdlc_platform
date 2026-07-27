@@ -67,8 +67,8 @@ def build_brd(artifacts, project_name: str, project_description: str = "") -> Di
     personas = _safe_list(ba, "personas")
     
     # Check if live BA workspace data exists
-    has_live_ba_data = bool(stories or epics or personas or req_list)
-    use_fallbacks = DEMO_MODE or not has_live_ba_data
+    # Single Source of Truth Enforcement: Only use fallbacks if DEMO_MODE=true is explicitly set
+    use_fallbacks = DEMO_MODE
 
     # Extract or fallback Objectives
     live_objectives = _safe_list(ba, "business_objectives") or _safe_list(reqs, "business_objectives")
@@ -175,13 +175,15 @@ def build_brd(artifacts, project_name: str, project_description: str = "") -> Di
     }
 
     # Stakeholders
-    stakeholders_out = _safe_list(ba, "stakeholders") or _safe_list(reqs, "stakeholders") or [
-        {"role": "Executive Sponsor", "responsibility": "Strategic direction and funding approval", "approval_authority": True},
-        {"role": "Product Owner", "responsibility": "Requirements prioritisation and backlog management", "approval_authority": True},
-        {"role": "Business Analyst", "responsibility": "Requirements elicitation, documentation, and sign-off", "approval_authority": True},
-        {"role": "Solution Architect", "responsibility": "Technical design and architecture governance", "approval_authority": False},
-        {"role": "Security Officer", "responsibility": "Security requirements and compliance validation", "approval_authority": True},
-    ]
+    stakeholders_out = _safe_list(ba, "stakeholders") or _safe_list(reqs, "stakeholders") or (
+        [
+            {"role": "Executive Sponsor", "responsibility": "Strategic direction and funding approval", "approval_authority": True},
+            {"role": "Product Owner", "responsibility": "Requirements prioritisation and backlog management", "approval_authority": True},
+            {"role": "Business Analyst", "responsibility": "Requirements elicitation, documentation, and sign-off", "approval_authority": True},
+            {"role": "Solution Architect", "responsibility": "Technical design and architecture governance", "approval_authority": False},
+            {"role": "Security Officer", "responsibility": "Security requirements and compliance validation", "approval_authority": True},
+        ] if use_fallbacks else []
+    )
 
     # Process flows & metrics extraction
     process_flows_out = _safe_list(ba, "process_flows") or _safe_list(ba, "workflows") or (
