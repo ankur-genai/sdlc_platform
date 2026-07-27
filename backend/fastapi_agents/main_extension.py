@@ -2716,8 +2716,7 @@ def get_pipeline_status(
             ])
     active_stages.add(AgentName.MEMORY_AGENT.value)
 
-    from .agent_runner import get_target_agents
-    target_agents = get_target_agents(project)
+    target_agents = active_stages
     review_1_enabled = AgentName.BUSINESS_ANALYST_AGENT.value in target_agents
     review_2_enabled = AgentName.COMPLIANCE_AGENT.value in target_agents
 
