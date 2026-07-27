@@ -1262,12 +1262,12 @@ export function VideoGenerationWorkspace() {
           setInitialScriptDraft(scriptDraft);
           setLastScriptSavedTime(formattedTime);
           setShowScript(false);
-          addToast('✔ Voice-over narration saved successfully. This narration will be used for the next video generation.', 'success');
+          addToast('✔ Voice-over narration saved successfully. Your updated narration will be used for the next video generation.', 'success');
           return;
         }
       } catch (err) {
-        console.error('Database save script failed:', err);
-        addToast('Failed to save voice-over narration to database', 'error');
+        console.error('Save voice-over script failed:', err);
+        addToast('Failed to save voice-over narration', 'error');
         return;
       }
     }
@@ -1275,7 +1275,7 @@ export function VideoGenerationWorkspace() {
     setInitialScriptDraft(scriptDraft);
     setLastScriptSavedTime(formattedTime);
     setShowScript(false);
-    addToast('✔ Voice-over narration saved successfully. This narration will be used for the next video generation.', 'success');
+    addToast('✔ Voice-over narration saved successfully. Your updated narration will be used for the next video generation.', 'success');
   }, [scriptDraft, slides, selectedSlideIndices, projectId, setSlides, addToast]);
 
   // Regenerate just the active slide's diagram — never touches other slides.
@@ -1801,16 +1801,16 @@ export function VideoGenerationWorkspace() {
                   </button>
                 </div>
 
-                {/* ─ Live Narration Script / Speaker Notes Panel (Database Persisted) ─ */}
+                {/* ─ Live Voice-over Narration Panel ─ */}
                 <div className="mt-4 rounded-xl border border-dark-border bg-dark-card p-4 shadow-lg">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <FileText className="h-4 w-4 text-ey-yellow" />
                       <span className="text-xs font-bold text-text-primary uppercase tracking-wider">
-                        Slide {activeIdx + 1} Narration Script / Speaker Notes
+                        🎙️ Slide {activeIdx + 1} Voice-over Narration
                       </span>
-                      <span className="text-[10px] text-status-success bg-status-success/10 px-2 py-0.5 rounded-full border border-status-success/20 font-medium">
-                        PostgreSQL Persisted
+                      <span className="text-[10px] text-status-success bg-status-success/10 px-2 py-0.5 rounded-full border border-status-success/20 font-medium flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" /> Saved to Project
                       </span>
                     </div>
                     <button onClick={openScriptEditor} className="text-xs text-ey-yellow hover:underline flex items-center gap-1 font-medium">
@@ -1820,12 +1820,12 @@ export function VideoGenerationWorkspace() {
                   <textarea
                     value={activeSlide.speaker_notes || ''}
                     onChange={e => updateSlide(activeIdx, 'speaker_notes', e.target.value)}
-                    placeholder="Enter narration script / speaker notes for this slide (automatically persisted to database)..."
+                    placeholder="Enter voice-over narration for this slide (will be spoken during video generation)..."
                     rows={3}
                     className="w-full rounded-lg border border-dark-border bg-dark-bg p-3 text-xs font-mono text-text-primary focus:border-ey-yellow focus:outline-none transition-colors"
                   />
                   <p className="text-[10px] text-text-muted mt-1 flex items-center justify-between">
-                    <span>Edits are saved to PostgreSQL database as the Single Source of Truth.</span>
+                    <span>Changes are saved directly to your project.</span>
                     <span>{activeSlide.speaker_notes?.length || 0} chars</span>
                   </p>
                 </div>
@@ -2478,26 +2478,24 @@ export function VideoGenerationWorkspace() {
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-status-success flex-shrink-0" />
                     <span className="font-bold text-status-success">Voice-over Status:</span>
-                    <span className="text-text-primary font-medium">✔ Saved to Project Database</span>
+                    <span className="text-text-primary font-medium">✔ Saved to Project</span>
                   </div>
-                  <div className="text-[11px] text-text-muted flex items-center gap-3">
-                    <span>Source: <strong className="text-text-primary">Database (Single Source of Truth)</strong></span>
-                    {lastScriptSavedTime && (
-                      <>
-                        <span>•</span>
-                        <span>Last Updated: <strong className="text-text-primary">{lastScriptSavedTime}</strong></span>
-                      </>
-                    )}
-                  </div>
+                  {lastScriptSavedTime && (
+                    <div className="text-[11px] text-text-muted flex items-center gap-1.5">
+                      <span>Last Updated:</span>
+                      <strong className="text-text-primary font-semibold">{lastScriptSavedTime}</strong>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="rounded-xl border border-ey-yellow/40 bg-ey-yellow/10 p-3.5 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="h-4 w-4 text-ey-yellow flex-shrink-0 animate-bounce" />
-                    <span className="font-bold text-ey-yellow">● Unsaved Changes</span>
+                    <span className="font-bold text-ey-yellow">Voice-over Status:</span>
+                    <span className="text-text-primary font-medium">● Unsaved Changes</span>
                   </div>
                   <span className="text-text-primary font-medium text-[11px]">
-                    Your edits have not been saved yet. Save before generating the video.
+                    Save your narration before generating the video.
                   </span>
                 </div>
               )}
