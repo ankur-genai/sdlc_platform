@@ -1976,6 +1976,109 @@ def _register(app_router: APIRouter, get_db_fn, get_current_user_fn, models, ws_
         return PlainTextResponse("\n".join(lines), media_type="text/plain",
                                   headers={"Content-Disposition": f"attachment; filename=script_project_{project_id}.txt"})
 
+    # ── Database-Backed Script Persistence Endpoints ─────────────────────────
+    @app_router.post("/projects/{project_id}/presentation/script", summary="Persist updated slides & narration script to database")
+    def save_presentation_script(
+        project_id: int,
+        payload: dict,
+        db: Session = Depends(get_db_fn),
+        current_user=Depends(get_current_user_fn),
+    ):
+        """Persists updated slides (including title, subtitle, content, speaker_notes, layout, duration)
+        to PostgreSQL database as the Single Source of Truth for the presentation artifact."""
+        proj = db.get(Project, project_id)
+        if not proj:
+            raise HTTPException(404, f"Project {project_id} not found")
+
+        slides = payload.get("slides")
+        if slides is None or not isinstance(slides, list):
+            raise HTTPException(422, "Payload must contain a 'slides' list")
+
+        pres_art = (
+            db.query(GeneratedArtifact)
+            .filter(
+                GeneratedArtifact.project_id == project_id,
+                GeneratedArtifact.artifact_type.in_(["presentation", "presentation_pptx"]),
+            )
+            .order_by(GeneratedArtifact.created_at.desc())
+            .first()
+        )
+
+        existing_data = {}
+        if pres_art and pres_art.content:
+            try:
+                existing_data = json.loads(pres_art.content)
+            except Exception:
+                existing_data = {}
+
+        # Merge updated slides with existing presentation metadata
+        existing_data["slides"] = slides
+        updated_content = json.dumps(existing_data, ensure_ascii=False)
+
+        now = datetime.now(timezone.utc)
+        if pres_art:
+            pres_art.content = updated_content
+            pres_art.created_at = now
+            db.flush()
+            artifact_id = pres_art.id
+        else:
+            pres_art = GeneratedArtifact(
+                project_id=project_id,
+                artifact_type=ArtifactType.PRESENTATION.value,
+                content=updated_content,
+                created_at=now,
+            )
+            db.add(pres_art)
+            db.flush()
+            artifact_id = pres_art.id
+
+        db.commit()
+        logger.info("[PresentationScript] Successfully persisted updated script & slides for project %s (artifact_id=%s, slide_count=%d)", project_id, artifact_id, len(slides))
+
+        return {
+            "success": True,
+            "message": "Script and presentation slides persisted successfully in database",
+            "project_id": project_id,
+            "artifact_id": artifact_id,
+            "slide_count": len(slides),
+            "updated_at": now.isoformat(),
+        }
+
+    @app_router.get("/projects/{project_id}/presentation/script", summary="Retrieve latest persisted presentation slides & script")
+    def get_presentation_script(
+        project_id: int,
+        db: Session = Depends(get_db_fn),
+        current_user=Depends(get_current_user_fn),
+    ):
+        """Retrieves the latest persisted presentation slides & narration script from PostgreSQL."""
+        pres_art = (
+            db.query(GeneratedArtifact)
+            .filter(
+                GeneratedArtifact.project_id == project_id,
+                GeneratedArtifact.artifact_type.in_(["presentation", "presentation_pptx"]),
+            )
+            .order_by(GeneratedArtifact.created_at.desc())
+            .first()
+        )
+
+        if not pres_art or not pres_art.content:
+            return {"found": False, "project_id": project_id, "slides": []}
+
+        try:
+            data = json.loads(pres_art.content)
+            slides = data.get("slides") or []
+            return {
+                "found": True,
+                "project_id": project_id,
+                "artifact_id": pres_art.id,
+                "artifact_type": pres_art.artifact_type,
+                "slides": slides,
+                "updated_at": pres_art.created_at.isoformat() if pres_art.created_at else None,
+            }
+        except Exception as exc:
+            logger.warning("[PresentationScript] Failed to parse content for project %s: %s", project_id, exc)
+            return {"found": False, "project_id": project_id, "slides": []}
+
     # ── NEW: Download video artifact ──────────────────────────────────────────
     @app_router.get("/video/render/download/{artifact_id}", summary="Download video file")
     async def download_video(

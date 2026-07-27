@@ -1047,49 +1047,85 @@ export function VideoGenerationWorkspace() {
     }).catch(() => {});
   }, [projectId]);
 
-  // ── Load slides from artifact or localStorage ─────────────────────────────
+  // ── Load slides from Database (Single Source of Truth) or fallback ────────
   useEffect(() => {
-    if (!artifacts.length) { setLoadingSlides(false); return; }
+    let isMounted = true;
+    if (!projectId) { setLoadingSlides(false); return; }
 
-    // Try localStorage first
-    const saved = projectId ? localStorage.getItem(`slides_${projectId}`) : null;
-    if (saved) {
+    const loadPersistedSlides = async () => {
+      setLoadingSlides(true);
+
+      // Priority 1 (Single Source of Truth): Database API GET /projects/{projectId}/presentation/script
       try {
-        const parsed = JSON.parse(saved) as Slide[];
-        if (parsed.length > 0) { dispatch({ type: 'SET', slides: parsed }); setLoadingSlides(false); return; }
-      } catch { /* fall through */ }
-    }
+        const dbRes = await fastApiRequest<{ found: boolean; slides: any[] }>(`/projects/${projectId}/presentation/script`);
+        if (isMounted && dbRes.found && Array.isArray(dbRes.slides) && dbRes.slides.length > 0) {
+          const dbSlides: Slide[] = dbRes.slides.map((s: any, i: number) => ({
+            id: s.id || String(i),
+            title: s.title || '',
+            subtitle: s.subtitle || '',
+            content: s.content || s.body || '',
+            speaker_notes: s.speaker_notes || s.narration || s.notes || '',
+            layout: (s.layout || (i === 0 ? 'title' : 'content')) as SlideLayout,
+            duration: s.duration || 30,
+          }));
+          dispatch({ type: 'SET', slides: dbSlides });
+          localStorage.setItem(`slides_${projectId}`, JSON.stringify(dbSlides));
+          setLoadingSlides(false);
+          return;
+        }
+      } catch { /* fall through to artifacts / localStorage */ }
 
-    const presArt = artifacts.find(a => a.artifact_type === 'presentation' || a.artifact_type === 'presentation_pptx');
-    if (!presArt) { dispatch({ type: 'SET', slides: getDefaultSlides() }); setLoadingSlides(false); return; }
-
-    try {
-      const data = typeof presArt.content === 'string' ? JSON.parse(presArt.content) : presArt.content;
-      const rawSlides: Slide[] = [];
-
-      if (data.slides?.length) {
-        data.slides.forEach((s: any, i: number) => rawSlides.push({
-          id: String(i), title: s.title || '', subtitle: s.subtitle || '',
-          content: s.content || s.body || '', speaker_notes: s.speaker_notes || s.narration || '',
-          layout: (s.layout || (i === 0 ? 'title' : 'content')) as SlideLayout, duration: s.duration || 30,
-        }));
-      } else if (data.slide_outline?.length) {
-        const notes: Record<number, string> = {};
-        (data.speaker_notes || []).forEach((n: any) => { notes[n.slide_number || 0] = n.notes || ''; });
-        data.slide_outline.forEach((item: any, i: number) => rawSlides.push({
-          id: String(i), title: item.title || '', subtitle: item.subtitle || '',
-          content: (item.key_points || []).map((p: string) => `• ${p}`).join('\n'),
-          speaker_notes: notes[item.slide_number || i + 1] || '',
-          layout: (i === 0 ? 'title' : item.slide_type || 'content') as SlideLayout, duration: 30,
-        }));
+      // Priority 2: Fallback to existing GeneratedArtifacts in props
+      const presArt = artifacts.find(a => a.artifact_type === 'presentation' || a.artifact_type === 'presentation_pptx');
+      if (presArt) {
+        try {
+          const data = typeof presArt.content === 'string' ? JSON.parse(presArt.content) : presArt.content;
+          const rawSlides: Slide[] = [];
+          if (data.slides?.length) {
+            data.slides.forEach((s: any, i: number) => rawSlides.push({
+              id: s.id || String(i), title: s.title || '', subtitle: s.subtitle || '',
+              content: s.content || s.body || '', speaker_notes: s.speaker_notes || s.narration || '',
+              layout: (s.layout || (i === 0 ? 'title' : 'content')) as SlideLayout, duration: s.duration || 30,
+            }));
+          } else if (data.slide_outline?.length) {
+            const notes: Record<number, string> = {};
+            (data.speaker_notes || []).forEach((n: any) => { notes[n.slide_number || 0] = n.notes || ''; });
+            data.slide_outline.forEach((item: any, i: number) => rawSlides.push({
+              id: String(i), title: item.title || '', subtitle: item.subtitle || '',
+              content: (item.key_points || []).map((p: string) => `• ${p}`).join('\n'),
+              speaker_notes: notes[item.slide_number || i + 1] || '',
+              layout: (i === 0 ? 'title' : item.slide_type || 'content') as SlideLayout, duration: 30,
+            }));
+          }
+          if (rawSlides.length > 0 && isMounted) {
+            dispatch({ type: 'SET', slides: rawSlides });
+            localStorage.setItem(`slides_${projectId}`, JSON.stringify(rawSlides));
+            setLoadingSlides(false);
+            return;
+          }
+        } catch { /* fall through to localStorage */ }
       }
 
-      dispatch({ type: 'SET', slides: rawSlides.length ? rawSlides : getDefaultSlides() });
-    } catch { dispatch({ type: 'SET', slides: getDefaultSlides() }); }
-    setLoadingSlides(false);
+      // Priority 3: LocalStorage (temporary offline/draft cache only)
+      const saved = localStorage.getItem(`slides_${projectId}`);
+      if (saved && isMounted) {
+        try {
+          const parsed = JSON.parse(saved) as Slide[];
+          if (parsed.length > 0) { dispatch({ type: 'SET', slides: parsed }); setLoadingSlides(false); return; }
+        } catch { /* fall through */ }
+      }
+
+      if (isMounted) {
+        dispatch({ type: 'SET', slides: getDefaultSlides() });
+        setLoadingSlides(false);
+      }
+    };
+
+    loadPersistedSlides();
+    return () => { isMounted = false; };
   }, [artifacts, projectId]);
 
-  // ── Auto-save to localStorage ─────────────────────────────────────────────
+  // ── Auto-save to localStorage (temporary local offline cache) ────────────
   useEffect(() => {
     if (!projectId || !slides.length) return;
     const t = setTimeout(() => localStorage.setItem(`slides_${projectId}`, JSON.stringify(slides)), 1500);
@@ -1159,49 +1195,67 @@ export function VideoGenerationWorkspace() {
     setShowScript(true);
   }, [slides, selectedSlideIndices]);
 
-  // Strips a leading "=== Slide N: Title ===" marker line if still present,
-  // but never requires it — editing a script by hand (shortening, deleting
-  // the header line, retyping) must not silently fail to save.
+  // Strips a leading "=== Slide N: Title ===" marker line if still present
   const stripMarkerLine = (block: string) => block.replace(/^===\s*Slide\s+\d+:[^\n]*===\s*\n?/i, '').trim();
 
-  const saveScriptEditor = useCallback(() => {
+  const saveScriptEditor = useCallback(async () => {
     const indices = selectedSlideIndices ? [...selectedSlideIndices].sort((a, b) => a - b) : slides.map((_, i) => i);
 
-    // Single slide being edited: no need to parse markers at all — the
-    // whole textarea (minus any leftover header line) IS that slide's script.
+    let updatedSlides = slides;
+    // Single slide being edited
     if (indices.length === 1) {
       const text = stripMarkerLine(scriptDraft.trim());
       const idx = indices[0];
-      setSlides(prev => prev.map((s, i) => i === idx ? { ...s, speaker_notes: text } : s));
-      setShowScript(false);
-      addToast('Narration updated', 'success');
-      return;
+      updatedSlides = slides.map((s, i) => i === idx ? { ...s, speaker_notes: text } : s);
+    } else {
+      // Multiple slides: split on marker lines
+      let blocks = scriptDraft.split(/\n(?=\s*===\s*Slide\s+\d+:)/i).map(b => b.trim()).filter(Boolean);
+      let notesByIndex = new Map<number, string>();
+      blocks.forEach(block => {
+        const match = block.match(/^===\s*Slide\s+(\d+):[^\n]*===\s*\n?([\s\S]*)$/i);
+        if (match) notesByIndex.set(parseInt(match[1], 10) - 1, match[2].trim());
+      });
+
+      if (notesByIndex.size === 0 && blocks.length === indices.length) {
+        indices.forEach((idx, pos) => notesByIndex.set(idx, stripMarkerLine(blocks[pos])));
+      }
+
+      if (notesByIndex.size === 0) {
+        addToast("Couldn't tell which slide each part of the script belongs to — keep each slide's \"=== Slide N ===\" header line intact, or edit one slide at a time.", 'error');
+        return;
+      }
+
+      updatedSlides = slides.map((s, i) => notesByIndex.has(i) ? { ...s, speaker_notes: notesByIndex.get(i)! } : s);
     }
 
-    // Multiple slides: split on marker lines when present...
-    let blocks = scriptDraft.split(/\n(?=\s*===\s*Slide\s+\d+:)/i).map(b => b.trim()).filter(Boolean);
-    let notesByIndex = new Map<number, string>();
-    blocks.forEach(block => {
-      const match = block.match(/^===\s*Slide\s+(\d+):[^\n]*===\s*\n?([\s\S]*)$/i);
-      if (match) notesByIndex.set(parseInt(match[1], 10) - 1, match[2].trim());
-    });
-
-    // ...but if markers were edited away and nothing parsed, fall back to
-    // mapping blocks to the selected slides by position (best effort) rather
-    // than silently discarding the user's edits.
-    if (notesByIndex.size === 0 && blocks.length === indices.length) {
-      indices.forEach((idx, pos) => notesByIndex.set(idx, stripMarkerLine(blocks[pos])));
+    // 1. Update React local state & localStorage backup
+    setSlides(updatedSlides);
+    if (projectId) {
+      localStorage.setItem(`slides_${projectId}`, JSON.stringify(updatedSlides));
     }
 
-    if (notesByIndex.size === 0) {
-      addToast("Couldn't tell which slide each part of the script belongs to — keep each slide's \"=== Slide N ===\" header line intact, or edit one slide at a time.", 'error');
-      return;
+    // 2. Persist to PostgreSQL database as Single Source of Truth
+    if (projectId) {
+      try {
+        const res = await fastApiRequest<{ success: boolean }>(`/projects/${projectId}/presentation/script`, {
+          method: 'POST',
+          body: { slides: updatedSlides },
+        });
+        if (res.success) {
+          setShowScript(false);
+          addToast('Script saved to database successfully', 'success');
+          return;
+        }
+      } catch (err) {
+        console.error('Database save script failed:', err);
+        addToast('Failed to save script to database', 'error');
+        return;
+      }
     }
 
-    setSlides(prev => prev.map((s, i) => notesByIndex.has(i) ? { ...s, speaker_notes: notesByIndex.get(i)! } : s));
     setShowScript(false);
-    addToast(`Updated narration for ${notesByIndex.size} slide${notesByIndex.size === 1 ? '' : 's'}`, 'success');
-  }, [scriptDraft, slides, selectedSlideIndices, setSlides, addToast]);
+    addToast('Narration script updated', 'success');
+  }, [scriptDraft, slides, selectedSlideIndices, projectId, setSlides, addToast]);
 
   // Regenerate just the active slide's diagram — never touches other slides.
   const [diagramRegenLoading, setDiagramRegenLoading] = useState(false);
