@@ -3119,7 +3119,7 @@ def _run_pipeline_inner(job, db_session_factory, save_artifact_fn):
             # Translated (spoken-language) narration for non-English voices —
             # see slide_display_narration above.
             cap_text = (slide_display_narration[i] if i < len(slide_display_narration) else "").strip() \
-                or (slide.get("narration") or slide.get("speaker_notes") or "").strip()
+                or (slide.get("speaker_notes") or slide.get("narration") or "").strip()
             if presenter_svc is not None:
                 if str(job.presenter_position).lower() == "left":
                     cl = 560
@@ -3221,14 +3221,9 @@ def _run_pipeline_inner(job, db_session_factory, save_artifact_fn):
         pct = int(40 + (i / total) * 30)
         _progress(job, pct, f"TTS: slide {i + 1}/{total}")
 
-        # The user's *actual* script (English source) — narration or speaker
-        # notes only, NOT a fall-back to the slide's own on-screen content.
-        # The multi-stage path aligns this to sections and lets the hybrid
-        # rule fill any section it doesn't cover from that section's cleaned
-        # on-screen text (see _narration_from_section) — reading the raw
-        # bulleted `content` field here instead would pre-empt that with
-        # literal-"bullet"-reading markup.
-        user_source_narration = (slide.get("narration") or slide.get("speaker_notes") or "").strip()
+        # The user's *actual* script (English source) — speaker_notes takes precedence
+        # over default narration to ensure user edits are synthesized.
+        user_source_narration = (slide.get("speaker_notes") or slide.get("narration") or "").strip()
         # Last-resort text for the single-stage path (which has no per-section
         # fill) — there, an on-screen-content read is still better than silence.
         narration = user_source_narration or _clean_section_text_for_speech(

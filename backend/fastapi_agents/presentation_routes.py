@@ -1410,39 +1410,52 @@ def _register(app_router: APIRouter, get_db_fn, get_current_user_fn, models, ws_
         if not project_id:
             raise HTTPException(422, "project_id required")
 
-        slides = payload.get("slides") or []
-        if not slides:
-            # Load from latest presentation artifact
-            art = (
-                db.query(GeneratedArtifact)
-                .filter(
-                    GeneratedArtifact.project_id == project_id,
-                    GeneratedArtifact.artifact_type == ArtifactType.PRESENTATION.value,
-                )
-                .order_by(GeneratedArtifact.created_at.desc())
-                .first()
+        # ── Single Source of Truth: Fetch latest persisted presentation artifact from PostgreSQL ──
+        latest_pres_art = (
+            db.query(GeneratedArtifact)
+            .filter(
+                GeneratedArtifact.project_id == project_id,
+                GeneratedArtifact.artifact_type.in_(["presentation", "presentation_pptx"]),
             )
-            if art:
-                try:
-                    data = json.loads(art.content)
-                    slides = data.get("slides") or []
-                    if not slides:
-                        # Build from slide_outline / speaker_notes
-                        outline = data.get("slide_outline") or []
-                        notes = {n.get("slide_number", i+1): n for i, n in enumerate(data.get("speaker_notes") or [])}
-                        slides = []
-                        for item in outline:
-                            sn = item.get("slide_number", 1)
-                            note = notes.get(sn, {})
-                            slides.append({
-                                "title": item.get("title", ""),
-                                "subtitle": item.get("subtitle", ""),
-                                "content": "\n".join(f"• {p}" for p in item.get("key_points", [])),
-                                "speaker_notes": note.get("notes", ""),
-                                "layout": item.get("slide_type", "content"),
-                            })
-                except Exception as exc:
-                    logger.warning("[VideoRender] Failed to parse presentation artifact: %s", exc)
+            .order_by(GeneratedArtifact.created_at.desc())
+            .first()
+        )
+
+        db_slides_by_index = {}
+        db_slides_by_title = {}
+        if latest_pres_art and latest_pres_art.content:
+            try:
+                db_data = json.loads(latest_pres_art.content)
+                db_slides = db_data.get("slides") or []
+                for idx, s in enumerate(db_slides):
+                    sn = (s.get("speaker_notes") or s.get("narration") or "").strip()
+                    if sn:
+                        db_slides_by_index[idx] = sn
+                        if s.get("title"):
+                            db_slides_by_title[s.get("title").strip().lower()] = sn
+            except Exception as exc:
+                logger.warning("[VideoRender] Failed to parse latest DB presentation artifact: %s", exc)
+
+        slides = payload.get("slides") or []
+        if not slides and latest_pres_art and latest_pres_art.content:
+            try:
+                db_data = json.loads(latest_pres_art.content)
+                slides = db_data.get("slides") or []
+                if not slides and db_data.get("slide_outline"):
+                    outline = db_data.get("slide_outline") or []
+                    notes = {n.get("slide_number", i+1): n for i, n in enumerate(db_data.get("speaker_notes") or [])}
+                    slides = []
+                    for item in outline:
+                        sn = notes.get(item.get("slide_number", 1), {})
+                        slides.append({
+                            "title": item.get("title", ""),
+                            "subtitle": item.get("subtitle", ""),
+                            "content": "\n".join(f"• {p}" for p in item.get("key_points", [])),
+                            "speaker_notes": sn.get("notes", ""),
+                            "layout": item.get("slide_type", "content"),
+                        })
+            except Exception as exc:
+                logger.warning("[VideoRender] Failed to load slides from DB artifact: %s", exc)
 
         if not slides:
             # Build rich deck from all project artifacts
@@ -1457,6 +1470,21 @@ def _register(app_router: APIRouter, get_db_fn, get_current_user_fn, models, ws_
                 logger.info("[VideoRender] Built %d slides from artifacts via slide_deck_builder", len(slides))
             except Exception as exc:
                 logger.warning("[VideoRender] slide_deck_builder failed: %s", exc)
+
+        # ── Synchronize user's edited script from PostgreSQL to every slide ──
+        for idx, slide in enumerate(slides):
+            title_key = (slide.get("title") or "").strip().lower()
+            persisted_notes = (
+                db_slides_by_index.get(idx)
+                or db_slides_by_title.get(title_key)
+                or slide.get("speaker_notes")
+                or slide.get("narration")
+                or ""
+            ).strip()
+
+            if persisted_notes:
+                slide["speaker_notes"] = persisted_notes
+                slide["narration"] = persisted_notes  # User edited script becomes authoritative for both keys
 
         if not slides:
             raise HTTPException(422, "No slides found. Generate a presentation first.")
