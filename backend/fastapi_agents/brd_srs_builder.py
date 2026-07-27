@@ -242,16 +242,16 @@ def build_brd(artifacts, project_name: str, project_description: str = "") -> Di
         "business_value": ba.get("business_value") or "Drastic reduction in processing overhead, enhanced cross-departmental alignment, and full regulatory traceability."
     }
 
-    # Traceability Matrix
+    # Traceability Matrix (Business Objective -> Epic -> User Story -> Acceptance Scope -> Status)
     traceability_matrix = []
-    for s in stories_out[:15]:
+    for idx, s in enumerate(stories_out[:15]):
         if isinstance(s, dict):
-            s_id = s.get("id", "US-001")
+            s_id = s.get("id", f"US-{idx+1:03d}")
             traceability_matrix.append({
-                "requirement_id": s.get("req_id", f"REQ-{s_id}"),
+                "objective": objectives[idx % len(objectives)] if (objectives and isinstance(objectives, list)) else "Operational Excellence",
+                "epic_id": s.get("epic_id", f"EPIC-{(idx//3)+1:02d}"),
                 "story_id": s_id,
                 "title": s.get("title", s.get("user_action", s.get("goal", ""))),
-                "priority": s.get("priority", "Must"),
                 "status": "APPROVED"
             })
 
@@ -273,32 +273,6 @@ def build_brd(artifacts, project_name: str, project_description: str = "") -> Di
         "personas": personas_out,
         "epics": epics_out,
         "stories": stories_out,
-
-        "functional_requirements": [
-            {
-                "id": r.get("id", f"FR-{i+1:03d}"),
-                "description": r.get("description", r.get("title", "")),
-                "priority": r.get("priority", "Must"),
-                "source": r.get("source", "Business Analyst Workspace"),
-                "mapped_story": r.get("mapped_story", r.get("traceability_id", f"US-{i+1:03d}")),
-                "owner": r.get("owner", "Operations Lead"),
-                "status": r.get("status", "Approved")
-            }
-            for i, r in enumerate(func_reqs[:20])
-        ] or ([
-            {"id": "FR-001", "description": "The platform must provide customer self-service registration and profile management capabilities.", "priority": "Must", "source": "BA Workspace", "mapped_story": "US-001", "owner": "Customer Experience Team", "status": "Approved"},
-            {"id": "FR-002", "description": "Authorized managers must view real-time operational status dashboards and delivery performance metrics.", "priority": "Must", "source": "BA Workspace", "mapped_story": "US-002", "owner": "Business Operations Team", "status": "Approved"},
-            {"id": "FR-003", "description": "The system must maintain an immutable business audit ledger tracking all critical transaction state changes.", "priority": "Must", "source": "Compliance Policy", "mapped_story": "US-003", "owner": "Governance & Legal Team", "status": "Approved"}
-        ] if use_fallbacks else []),
-
-        "non_functional_requirements": nonfunc_reqs or ([
-            {"id": "NFR-001", "category": "Performance Benchmark", "description": "Business process execution and page responses must fulfill operational SLA standards under peak load.", "priority": "Must"},
-            {"id": "NFR-002", "category": "Data Governance", "description": "All customer records and business data must satisfy enterprise privacy policy and data security mandates.", "priority": "Must"},
-            {"id": "NFR-003", "category": "Service Availability", "description": "The business application must maintain continuous availability to support operational business hours.", "priority": "Must"},
-            {"id": "NFR-004", "category": "Business Scalability", "description": "The platform architecture must seamlessly scale to support projected 300% operational transaction volume growth.", "priority": "Should"},
-            {"id": "NFR-005", "category": "Usability & Accessibility", "description": "User interfaces must deliver an intuitive user experience adhering to corporate design and accessibility standards.", "priority": "Should"},
-            {"id": "NFR-006", "category": "Regulatory Compliance", "description": "System operations must comply fully with SOC 2, ISO 27001, and GDPR enterprise regulatory frameworks.", "priority": "Must"}
-        ] if use_fallbacks else []),
 
         "business_rules": rules_out,
         "process_flows": process_flows_out,

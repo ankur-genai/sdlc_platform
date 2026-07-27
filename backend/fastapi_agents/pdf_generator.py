@@ -1024,29 +1024,7 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
             ]
         ))
 
-    # 10. Functional Requirements (Mandatory)
-    sections_list.append((
-        "Functional Requirements",
-        lambda: [
-            Table([
-                [Paragraph("<b>Req ID</b>", styles_map['header']), Paragraph("<b>Requirement Specification</b>", styles_map['header']), Paragraph("<b>Priority</b>", styles_map['header']), Paragraph("<b>Source</b>", styles_map['header']), Paragraph("<b>Mapped Story</b>", styles_map['header'])],
-                *[[Paragraph(str(r.get("id", "FR-001")), styles_map['cell_bold']), Paragraph(str(r.get("description", "")), styles_map['cell']), Paragraph(str(r.get("priority", "Must")), styles_map['cell']), Paragraph(str(r.get("source", "BA Workspace")), styles_map['cell']), Paragraph(str(r.get("mapped_story", "US-001")), styles_map['cell'])] for r in (func_reqs if isinstance(func_reqs, list) else [])]
-            ], colWidths=[65, 219, 70, 80, 70], repeatRows=1, style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
-        ] if func_reqs else [Paragraph("<font color='#64748B'><i>No Functional Requirements defined in workspace.</i></font>", styles_map['body'])]
-    ))
-
-    # 11. Non-Functional Requirements (Mandatory)
-    sections_list.append((
-        "Non-Functional Requirements",
-        lambda: [
-            Table([
-                [Paragraph("<b>NFR ID</b>", styles_map['header']), Paragraph("<b>Category</b>", styles_map['header']), Paragraph("<b>Specification Benchmark</b>", styles_map['header']), Paragraph("<b>Priority</b>", styles_map['header'])],
-                *[[Paragraph(str(r.get("id", "NFR-001")), styles_map['cell_bold']), Paragraph(str(r.get("category", "Performance")), styles_map['cell']), Paragraph(str(r.get("description", "")), styles_map['cell']), Paragraph(str(r.get("priority", "Must")), styles_map['cell'])] for r in (nonfunc_reqs if isinstance(nonfunc_reqs, list) else [])]
-            ], colWidths=[70, 90, 264, 80], repeatRows=1, style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
-        ] if nonfunc_reqs else [Paragraph("<font color='#64748B'><i>No Non-Functional Requirements defined in workspace.</i></font>", styles_map['body'])]
-    ))
-
-    # 12. Business Rules Catalog (Optional — Rendered ONLY if data exists)
+    # 10. Business Rules Catalog (Optional — Rendered ONLY if data exists)
     if rules:
         sections_list.append((
             "Business Rules Catalog",
@@ -1058,7 +1036,7 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
             ]
         ))
 
-    # 13. Process Flows & Workflows (Optional — Rendered ONLY if data exists)
+    # 11. Process Flows & Workflows (Optional — Rendered ONLY if data exists)
     if process_flows:
         sections_list.append((
             "Process Flows & Workflows",
@@ -1073,7 +1051,7 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
             ]
         ))
 
-    # 14. Risks & Success Metrics (Optional — Rendered ONLY if data exists)
+    # 12. Risks & Success Metrics (Optional — Rendered ONLY if data exists)
     if risks or metrics:
         sections_list.append((
             "Risk Register & Success Metrics",
@@ -1096,7 +1074,7 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
             ]
         ))
 
-    # 15. Assumptions Catalog (Optional — Rendered ONLY if data exists)
+    # 13. Assumptions Catalog (Optional — Rendered ONLY if data exists)
     if assumptions:
         sections_list.append((
             "Assumptions Catalog",
@@ -1108,7 +1086,7 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
             ]
         ))
 
-    # 16. Dependencies Register (Optional — Rendered ONLY if data exists)
+    # 14. Dependencies Register (Optional — Rendered ONLY if data exists)
     if dependencies:
         sections_list.append((
             "Dependencies Register",
@@ -1120,15 +1098,15 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
             ]
         ))
 
-    # 17. Requirements Traceability Matrix (Optional — Rendered ONLY if data exists)
+    # 15. Business Requirements Traceability Matrix (Optional — Rendered ONLY if data exists)
     if traceability:
         sections_list.append((
-            "Requirements Traceability Matrix",
+            "Business Requirements Traceability Matrix",
             lambda: [
                 Table([
-                    [Paragraph("<b>Requirement ID</b>", styles_map['header']), Paragraph("<b>Mapped Story ID</b>", styles_map['header']), Paragraph("<b>Specification / Title</b>", styles_map['header']), Paragraph("<b>Status</b>", styles_map['header'])],
-                    *[[Paragraph(str(t.get("requirement_id", f"REQ-{idx+1:03d}") if isinstance(t, dict) else f"REQ-{idx+1:03d}"), styles_map['cell_bold']), Paragraph(str(t.get("story_id", f"US-{idx+1:03d}") if isinstance(t, dict) else f"US-{idx+1:03d}"), styles_map['cell']), Paragraph(str(t.get("title", "Traceability mapping") if isinstance(t, dict) else str(t)), styles_map['cell']), Paragraph(str(t.get("status", "APPROVED") if isinstance(t, dict) else "APPROVED"), styles_map['cell'])] for idx, t in enumerate(traceability if isinstance(traceability, list) else [])]
-                ], colWidths=[100, 100, 204, 100], repeatRows=1, style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
+                    [Paragraph("<b>Business Objective</b>", styles_map['header']), Paragraph("<b>Epic ID</b>", styles_map['header']), Paragraph("<b>User Story ID</b>", styles_map['header']), Paragraph("<b>Acceptance Scope / Title</b>", styles_map['header']), Paragraph("<b>Status</b>", styles_map['header'])],
+                    *[[Paragraph(str(t.get("objective", "Operational Excellence") if isinstance(t, dict) else "Operational Excellence"), styles_map['cell_bold']), Paragraph(str(t.get("epic_id", f"EPIC-{idx+1:02d}") if isinstance(t, dict) else f"EPIC-{idx+1:02d}"), styles_map['cell']), Paragraph(str(t.get("story_id", f"US-{idx+1:03d}") if isinstance(t, dict) else f"US-{idx+1:03d}"), styles_map['cell']), Paragraph(str(t.get("title", "Traceability mapping") if isinstance(t, dict) else str(t)), styles_map['cell']), Paragraph(str(t.get("status", "APPROVED") if isinstance(t, dict) else "APPROVED"), styles_map['cell'])] for idx, t in enumerate(traceability if isinstance(traceability, list) else [])]
+                ], colWidths=[130, 70, 80, 144, 80], repeatRows=1, style=[('BACKGROUND', (0,0), (-1,0), COLOR_SECONDARY), ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
             ]
         ))
 
