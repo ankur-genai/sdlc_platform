@@ -1159,8 +1159,18 @@ export function VideoGenerationWorkspace() {
 
   // ── Slide helpers ─────────────────────────────────────────────────────────
   const updateSlide = useCallback((idx: number, field: keyof Slide, value: string | number) => {
-    setSlides(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
-  }, [setSlides]);
+    setSlides(prev => {
+      const next = prev.map((s, i) => i === idx ? { ...s, [field]: value } : s);
+      if (projectId) {
+        localStorage.setItem(`slides_${projectId}`, JSON.stringify(next));
+        fastApiRequest<{ success: boolean }>(`/projects/${projectId}/presentation/script`, {
+          method: 'POST',
+          body: { slides: next },
+        }).catch(err => console.error('[SlideUpdate] Failed to persist to DB:', err));
+      }
+      return next;
+    });
+  }, [projectId, setSlides]);
 
   const addSlide = useCallback(() => {
     const s: Slide = { id: Date.now().toString(), title: 'New Slide', subtitle: '', content: '• Key point 1\n• Key point 2\n• Key point 3', speaker_notes: '', layout: 'content', duration: 30 };
@@ -1778,6 +1788,35 @@ export function VideoGenerationWorkspace() {
                     {diagramRegenLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
                     Regenerate Diagram
                   </button>
+                </div>
+
+                {/* ─ Live Narration Script / Speaker Notes Panel (Database Persisted) ─ */}
+                <div className="mt-4 rounded-xl border border-dark-border bg-dark-card p-4 shadow-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-ey-yellow" />
+                      <span className="text-xs font-bold text-text-primary uppercase tracking-wider">
+                        Slide {activeIdx + 1} Narration Script / Speaker Notes
+                      </span>
+                      <span className="text-[10px] text-status-success bg-status-success/10 px-2 py-0.5 rounded-full border border-status-success/20 font-medium">
+                        PostgreSQL Persisted
+                      </span>
+                    </div>
+                    <button onClick={openScriptEditor} className="text-xs text-ey-yellow hover:underline flex items-center gap-1 font-medium">
+                      Full Deck Script Editor →
+                    </button>
+                  </div>
+                  <textarea
+                    value={activeSlide.speaker_notes || ''}
+                    onChange={e => updateSlide(activeIdx, 'speaker_notes', e.target.value)}
+                    placeholder="Enter narration script / speaker notes for this slide (automatically persisted to database)..."
+                    rows={3}
+                    className="w-full rounded-lg border border-dark-border bg-dark-bg p-3 text-xs font-mono text-text-primary focus:border-ey-yellow focus:outline-none transition-colors"
+                  />
+                  <p className="text-[10px] text-text-muted mt-1 flex items-center justify-between">
+                    <span>Edits are saved to PostgreSQL database as the Single Source of Truth.</span>
+                    <span>{activeSlide.speaker_notes?.length || 0} chars</span>
+                  </p>
                 </div>
               </div>
             )}

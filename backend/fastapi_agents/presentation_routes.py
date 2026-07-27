@@ -2067,8 +2067,26 @@ def _register(app_router: APIRouter, get_db_fn, get_current_user_fn, models, ws_
         try:
             data = json.loads(pres_art.content)
             slides = data.get("slides") or []
+            if not slides and data.get("slide_outline"):
+                outline = data.get("slide_outline") or []
+                notes_dict = {}
+                for i, n in enumerate(data.get("speaker_notes") or []):
+                    notes_dict[n.get("slide_number", i + 1)] = n.get("notes", "")
+                slides = []
+                for i, item in enumerate(outline):
+                    sn_num = item.get("slide_number", i + 1)
+                    slides.append({
+                        "id": str(i),
+                        "title": item.get("title", ""),
+                        "subtitle": item.get("subtitle", ""),
+                        "content": "\n".join(f"• {p}" for p in item.get("key_points", [])),
+                        "speaker_notes": notes_dict.get(sn_num, ""),
+                        "layout": item.get("slide_type", "content"),
+                        "duration": 30,
+                    })
+
             return {
-                "found": True,
+                "found": True if slides else False,
                 "project_id": project_id,
                 "artifact_id": pres_art.id,
                 "artifact_type": pres_art.artifact_type,
