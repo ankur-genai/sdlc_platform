@@ -70,78 +70,78 @@ def build_brd(artifacts, project_name: str, project_description: str = "") -> Di
     # Single Source of Truth Enforcement: Only use fallbacks if DEMO_MODE=true is explicitly set
     use_fallbacks = DEMO_MODE
 
-    # Extract or fallback Objectives
+    # Extract or fallback Objectives (Business-Focused)
     live_objectives = _safe_list(ba, "business_objectives") or _safe_list(reqs, "business_objectives")
     if not live_objectives and isinstance(reqs.get("executive_summary"), dict):
         live_objectives = reqs["executive_summary"].get("key_objectives", [])
 
     objectives = live_objectives or (
         [
-            "Automate and streamline the target business process to reduce manual effort by 60%+",
-            "Provide a single source of truth for all relevant business data and decisions",
-            "Enable real-time visibility into operations through dashboards and reporting",
-            "Enforce governance, compliance, and audit controls across all user actions",
-            "Deliver a scalable, secure platform that supports future business growth",
+            "Streamline core business operations to reduce manual processing cycle time by 60%+",
+            "Establish a centralized Single Source of Truth for enterprise operational reporting",
+            "Enhance customer experience and registration conversion through intuitive self-service workflows",
+            "Enforce organizational compliance, regulatory policy, and audit trail governance",
+            "Drive operational cost efficiency and scale business capacity across enterprise divisions",
         ] if use_fallbacks else []
     )
 
-    # Extract or fallback Personas
+    # Extract or fallback Personas (Business-Focused Profiles)
     personas_out = personas or (
         [
-            {"name": "Enterprise User", "role": "Operations Manager", "goals": ["Maximize efficiency", "Automate manual tasks"], "painPoints": ["Manual entry", "Lack of real-time visibility"]},
-            {"name": "System Administrator", "role": "IT Admin", "goals": ["Ensure security & compliance"], "painPoints": ["Complex user management"]}
+            {"name": "Operational User", "role": "Business Operations Manager", "goals": ["Maximize workflow throughput", "Eliminate manual data entry"], "painPoints": ["Fragmented process tracking", "Delayed reporting insights"]},
+            {"name": "Executive Leader", "role": "VP of Operations", "goals": ["Ensure compliance & governance", "Achieve target ROI"], "painPoints": ["Lack of real-time SLA metrics"]}
         ] if use_fallbacks else []
     )
 
-    # Extract or fallback Epics & Stories
+    # Extract or fallback Epics & Stories (Business Capabilities)
     epics_out = epics or (
         [
-            {"id": "EPIC-01", "title": "Core System Operations", "description": "Primary operational capabilities and workflow automation", "storyCount": 5},
-            {"id": "EPIC-02", "title": "Security & Administration", "description": "User access management, RBAC, and security governance", "storyCount": 3}
+            {"id": "EPIC-01", "title": "Customer Onboarding & Workflow Management", "description": "Streamlines customer registration, account activation, and profile governance", "storyCount": 5},
+            {"id": "EPIC-02", "title": "Operational Governance & Analytics", "description": "Provides real-time business reporting dashboards and regulatory audit oversight", "storyCount": 3}
         ] if use_fallbacks else []
     )
 
     stories_out = stories or (
         [
-            {"id": "US-001", "role": "User", "goal": "authenticate securely", "benefit": "access authorized system capabilities", "priority": "Must", "points": 5, "acceptance_criteria": ["Given valid credentials, when login is submitted, then session is established"]},
-            {"id": "US-002", "role": "Admin", "goal": "manage user roles and permissions", "benefit": "enforce security governance", "priority": "Must", "points": 8, "acceptance_criteria": ["Given admin role, when permissions are modified, then changes apply immediately"]}
+            {"id": "US-001", "role": "Customer", "goal": "register and manage my account profile easily", "benefit": "access digital services self-service", "priority": "Must", "points": 5, "acceptance_criteria": ["Given a new user on registration page, when valid details are submitted, then account is activated successfully"]},
+            {"id": "US-002", "role": "Operations Manager", "goal": "view real-time operational status dashboards", "benefit": "monitor delivery SLA metrics and eliminate process bottlenecks", "priority": "Must", "points": 8, "acceptance_criteria": ["Given authorized manager login, when dashboard is accessed, then live KPI metrics update dynamically"]}
         ] if use_fallbacks else []
     )
 
-    # Extract or fallback Rules, Risks, Assumptions, Dependencies
+    # Extract or fallback Rules, Risks, Assumptions, Dependencies (Business Policies & Operational Risks)
     rules_out = _safe_list(ba, "business_rules") or _safe_list(reqs, "business_rules") or (
         [
-            "A user may not have more than one active session simultaneously (single-session policy)",
-            "All approvals must be recorded with approver identity, timestamp, and rationale",
-            "Data must be retained for a minimum of 7 years per regulatory requirements",
-            "Password must be at least 12 characters and changed every 90 days",
-            "API rate limits must be enforced: 1000 requests/minute per authenticated client",
+            "All customer profile modifications must be recorded in an immutable business audit ledger",
+            "High-priority operational exceptions require explicit manager sign-off before resolution",
+            "Customer record retention must comply with 7-year regulatory compliance policy mandates",
+            "Single active business user session policy enforced to prevent unauthorized account sharing",
+            "Third-party vendor transactions must adhere to enterprise SLA response time benchmarks",
         ] if use_fallbacks else []
     )
 
     risks_out = _safe_list(ba, "risks") or _safe_list(reqs, "risks") or (
         [
-            {"id": "RISK-001", "description": "Scope creep expanding v1 beyond agreed boundaries", "likelihood": "Medium", "impact": "High", "mitigation": "Strict change control process required"},
-            {"id": "RISK-002", "description": "Integration complexity with external third-party APIs", "likelihood": "Low", "impact": "High", "mitigation": "Dedicated integration spike in first sprint"}
+            {"id": "RISK-001", "description": "Operational change management resistance during rollout phase", "likelihood": "Medium", "impact": "High", "mitigation": "Conduct structured stakeholder training sessions and change management program"},
+            {"id": "RISK-002", "description": "Third-party vendor dependency delay affecting milestone delivery", "likelihood": "Low", "impact": "High", "mitigation": "Establish formal vendor SLA agreements and early integration alignment"}
         ] if use_fallbacks else []
     )
 
     assumptions_out = _safe_list(ba, "assumptions") or _safe_list(reqs, "assumptions") or (
         [
-            "Business stakeholders will be available for weekly reviews and sign-offs throughout the project",
-            "Existing infrastructure meets the minimum specifications defined in the architecture",
-            "Third-party APIs required for integration will be available in a non-production environment"
+            "Business division leaders will participate in bi-weekly sprint reviews and acceptance sign-offs",
+            "Existing corporate identity governance services will be available for user authentication",
+            "Operational teams have completed initial business process mapping prior to platform deployment"
         ] if use_fallbacks else []
     )
 
     dependencies_out = _safe_list(ba, "dependencies") or _safe_list(reqs, "dependencies") or (
         [
-            {"dependency": "Identity Provider (IdP) / SSO platform", "owner": "IT Security", "required_by": "Sprint 1"},
-            {"dependency": "Cloud infrastructure provisioned", "owner": "IT Operations", "required_by": "Sprint 1"}
+            {"dependency": "Corporate Single Sign-On (SSO) Governance Platform", "owner": "Enterprise Identity Team", "required_by": "Phase 1"},
+            {"dependency": "Enterprise Analytics & Reporting Data Warehouse", "owner": "Business Intelligence Team", "required_by": "Phase 1"}
         ] if use_fallbacks else []
     )
 
-    # Functional vs Non-Functional requirements
+    # Functional vs Non-Functional requirements (Business Capabilities & Quality Standards)
     func_reqs = [r for r in req_list if isinstance(r, dict) and "non" not in r.get("category", "").lower()]
     nonfunc_reqs = [r for r in req_list if isinstance(r, dict) and "non" in r.get("category", "").lower()]
     standards = _safe_list((comp.get("complianceAssessment") or {}).get("standards", []))
@@ -151,95 +151,95 @@ def build_brd(artifacts, project_name: str, project_description: str = "") -> Di
     # Executive Summary text
     exec_summary_text = ba.get("detailed_brd") or (
         reqs.get("overview") if isinstance(reqs.get("overview"), str) else (
-            f"{project_name} is an enterprise software solution designed to address "
-            f"{project_description or 'the identified business needs'}. "
-            "This Business Requirements Document defines the complete set of business, functional, "
-            "and non-functional requirements that govern the delivery of the solution."
+            f"{project_name} is an enterprise digital transformation solution designed to streamline "
+            f"{project_description or 'core business operations'}. "
+            "This Business Requirements Document defines the executive business vision, functional capabilities, "
+            "user personas, operational workflows, and business governance policies driving the project."
         )
     )
 
     # Scope text
     scope_data = ba.get("scope") or reqs.get("scope") or {
         "in_scope": [
-            "Core business workflow automation and digitisation",
-            "User authentication, authorisation, and session management",
-            "Role-based access control (RBAC) with granular permissions",
-            "Dashboard, reporting, and analytics capabilities",
-            "Audit trail and compliance logging for all user actions",
+            "End-to-end operational workflow digitisation and process automation",
+            "Customer self-service account management and profile verification",
+            "Real-time operational dashboard, KPI tracking, and executive reporting",
+            "Organizational role-based access control and business audit logging",
+            "Compliance enforcement according to enterprise governance standards",
         ],
         "out_of_scope": [
-            "Legacy system decommissioning (separate project)",
-            "Data migration from existing systems (addressed in migration plan)",
-            "Mobile native applications (Phase 2 deliverable)",
+            "Legacy hardware infrastructure decommissioning (managed under IT Ops roadmap)",
+            "Manual data migration from legacy paper archives (handled by data team)",
+            "Native mobile offline processing (scheduled for Phase 2 roadmap expansion)",
         ]
     }
 
-    # Stakeholders
+    # Stakeholders (Business Roles)
     stakeholders_out = _safe_list(ba, "stakeholders") or _safe_list(reqs, "stakeholders") or (
         [
-            {"role": "Executive Sponsor", "responsibility": "Strategic direction and funding approval", "approval_authority": True},
-            {"role": "Product Owner", "responsibility": "Requirements prioritisation and backlog management", "approval_authority": True},
-            {"role": "Business Analyst", "responsibility": "Requirements elicitation, documentation, and sign-off", "approval_authority": True},
-            {"role": "Solution Architect", "responsibility": "Technical design and architecture governance", "approval_authority": False},
-            {"role": "Security Officer", "responsibility": "Security requirements and compliance validation", "approval_authority": True},
+            {"role": "Executive Sponsor", "responsibility": "Strategic alignment, budget oversight, and final project sign-off", "approval_authority": True},
+            {"role": "Product Owner", "responsibility": "Business vision, feature prioritization, and acceptance management", "approval_authority": True},
+            {"role": "Lead Business Analyst", "responsibility": "Requirements elicitation, business process mapping, and BRD governance", "approval_authority": True},
+            {"role": "Operations Manager", "responsibility": "Operational workflow validation, user adoption, and daily execution", "approval_authority": False},
+            {"role": "Compliance & Policy Manager", "responsibility": "Regulatory adherence, privacy governance, and policy verification", "approval_authority": True},
         ] if use_fallbacks else []
     )
 
-    # Process flows & metrics extraction
+    # Process flows & metrics extraction (Business Workflows & KPIs)
     process_flows_out = _safe_list(ba, "process_flows") or _safe_list(ba, "workflows") or (
         [
             {
-                "name": "Customer Account Onboarding & Verification Flow",
-                "purpose": "Automates new user registration, identity verification, and initial profile provisioning.",
-                "trigger": "User submits registration form with email/SSO.",
-                "inputs": ["User registration data", "Email address", "SSO token"],
-                "processing_steps": ["Validate input data format", "Check email uniqueness", "Dispatch MFA / OTP verification link", "Create user account record in database"],
-                "decision_points": ["Is email already registered?", "Did MFA verification succeed within timeout?"],
-                "outputs": ["Active user session token", "Welcome notification dispatched", "Audit log record created"],
-                "exceptions": ["Invalid email format", "Duplicate registration attempt", "MFA gateway timeout"]
+                "name": "Customer Registration & Account Provisioning Workflow",
+                "purpose": "Automates customer onboarding, identity validation, and initial account setup.",
+                "trigger": "Customer submits digital onboarding request.",
+                "inputs": ["Customer registration profile", "Contact credentials", "Verification proof"],
+                "processing_steps": ["Validate customer application completeness", "Verify account uniqueness", "Issue welcome activation notification", "Establish active customer profile"],
+                "decision_points": ["Is customer registration payload valid?", "Does applicant satisfy verification criteria?"],
+                "outputs": ["Active customer profile record", "Welcome notification dispatched", "Audit ledger entry logged"],
+                "exceptions": ["Duplicate registration request", "Verification data mismatch", "Validation timeout alert"]
             },
             {
-                "name": "Automated Transaction Settlement & Billing Workflow",
-                "purpose": "Processes digital payments, issues PDF invoices, and updates ledger records.",
-                "trigger": "User clicks Complete Purchase on checkout page.",
-                "inputs": ["Shopping cart payload", "Payment method token", "Billing address"],
-                "processing_steps": ["Lock inventory item", "Invoke payment gateway API", "Record transaction ledger entry", "Generate PDF invoice receipt"],
-                "decision_points": ["Is payment authorized?", "Is inventory stock available?"],
-                "outputs": ["Payment confirmation payload", "PDF Invoice receipt", "Order fulfillment event dispatched"],
-                "exceptions": ["Card decline / insufficient funds", "Payment API timeout", "Inventory depletion concurrency lock"]
+                "name": "Order Settlement & Invoice Fulfillment Process",
+                "purpose": "Manages commercial transaction settlement, invoice issuance, and order confirmation.",
+                "trigger": "Customer confirms checkout request.",
+                "inputs": ["Selected service item payload", "Billing information", "Delivery preferences"],
+                "processing_steps": ["Reserve requested item allocation", "Process commercial transaction settlement", "Generate official digital tax invoice receipt", "Notify fulfillment operations team"],
+                "decision_points": ["Is transaction authorized successfully?", "Is service inventory available?"],
+                "outputs": ["Order confirmation notification", "Digital Tax Invoice receipt", "Fulfillment operational task generated"],
+                "exceptions": ["Transaction authorization decline", "Item inventory depletion", "Billing address validation failure"]
             }
         ] if use_fallbacks else []
     )
 
     metrics_out = _safe_list(ba, "metrics") or _safe_list(ba, "success_metrics") or (
         [
-            {"metric": "Monthly Active Users (MAU)", "current": "10,000", "target": "50,000", "measurement": "Session analytics dashboard", "frequency": "Monthly", "owner": "Product Marketing"},
-            {"metric": "Order Settlement Latency", "current": "4.2 sec", "target": "< 1.5 sec", "measurement": "APM Gateway metrics", "frequency": "Real-time", "owner": "Backend Engineering"},
-            {"metric": "Customer Onboarding Conversion", "current": "62%", "target": "85%", "measurement": "Funnel analytics", "frequency": "Weekly", "owner": "Growth Team"},
-            {"metric": "System Availability Uptime", "current": "99.2%", "target": "99.9%", "measurement": "Datadog / Prometheus SLA monitor", "frequency": "Continuous", "owner": "DevOps & Reliability"}
+            {"metric": "Monthly Active Users (MAU)", "current": "10,000", "target": "50,000 Users", "measurement": "Operational analytics platform", "frequency": "Monthly", "owner": "Product Management"},
+            {"metric": "Customer Onboarding Conversion Rate", "current": "62%", "target": "85%", "measurement": "Registration funnel analytics", "frequency": "Weekly", "owner": "Growth & Operations"},
+            {"metric": "Order Processing Cycle Time", "current": "4.2 min", "target": "< 1.5 min", "measurement": "Business process monitoring", "frequency": "Continuous", "owner": "Operations Lead"},
+            {"metric": "Customer Satisfaction Rating (CSAT)", "current": "82%", "target": "95%", "measurement": "Post-fulfillment feedback survey", "frequency": "Monthly", "owner": "Customer Success"}
         ] if use_fallbacks else []
     )
 
-    # Rich Executive Summary breakdown
+    # Rich Executive Summary breakdown (Business Focus)
     exec_summary_dict = {
         "overview": exec_summary_text,
-        "business_problem": ba.get("business_problem") or "Existing operational workflows suffer from manual handoffs, lack of real-time visibility, and vulnerability to process bottlenecks.",
-        "existing_challenges": ba.get("existing_challenges") or "Manual data re-entry across legacy systems, delayed status updates, and compliance audit gaps.",
-        "proposed_solution": ba.get("proposed_solution") or f"{project_name} automates end-to-end SDLC workflows, enforces centralized governance, and provides real-time workspace analytics.",
-        "business_benefits": ba.get("business_benefits") or "Reduces operational processing time by 60%, eliminates manual entry errors, and satisfies enterprise security SLA targets.",
-        "success_criteria": ba.get("success_criteria") or "100% of user stories accepted in Gherkin BDD format, zero critical vulnerabilities, and 99.9% uptime compliance.",
-        "expected_roi": ba.get("expected_roi") or "Estimated 300% ROI over 24 months through reduced operational overhead and accelerated delivery velocity.",
+        "business_problem": ba.get("business_problem") or "Legacy operational processes rely on fragmented spreadsheets and manual handoffs, causing process bottlenecks, delayed reporting, and audit compliance risks.",
+        "existing_challenges": ba.get("existing_challenges") or "Manual data re-entry across business units, lack of real-time SLA visibility, and operational overhead.",
+        "proposed_solution": ba.get("proposed_solution") or f"{project_name} delivers a unified enterprise platform that automates core business workflows, enforces governance, and provides executive reporting analytics.",
+        "business_benefits": ba.get("business_benefits") or "Accelerates process cycle times by 60%, eliminates manual data entry errors, and satisfies regulatory audit standards.",
+        "success_criteria": ba.get("success_criteria") or "100% user story acceptance by business stakeholders, zero compliance breaches, and 95%+ customer satisfaction.",
+        "expected_roi": ba.get("expected_roi") or "Estimated 300% ROI over 24 months through reduced operational overhead and accelerated service delivery velocity.",
         "key_objectives": objectives,
         "success_metrics": metrics_out,
     }
 
-    # Rich Problem Statement breakdown
+    # Rich Problem Statement breakdown (Business Focus)
     problem_statement_dict = {
-        "current_state": ba.get("current_state") or "Legacy manual processes requiring human coordination across disconnected spreadsheet tools.",
-        "pain_points": ba.get("pain_points") or ["High manual error rates", "Slow processing speed", "Lack of audit logging", "Security compliance risks"],
-        "business_need": ba.get("business_need") or "Modern cloud-native platform providing automated orchestration and Single Source of Truth architecture.",
-        "desired_future_state": ba.get("desired_future_state") or "Automated workspace platform with real-time analytics, automated PDF exports, and AI-driven Copilot assistance.",
-        "business_value": ba.get("business_value") or "Drastic reduction in cycle time, improved stakeholder alignment, and full regulatory traceability."
+        "current_state": ba.get("current_state") or "Disconnected legacy manual operations requiring human coordination across offline tracking sheets.",
+        "pain_points": ba.get("pain_points") or ["High manual processing error rates", "Lack of real-time business visibility", "Delayed transaction completion", "Compliance audit gaps"],
+        "business_need": ba.get("business_need") or "Enterprise digital transformation platform providing automated orchestration and Single Source of Truth governance.",
+        "desired_future_state": ba.get("desired_future_state") or "Automated workspace platform with real-time analytics, digital BRD exports, and AI Copilot assistance.",
+        "business_value": ba.get("business_value") or "Drastic reduction in processing overhead, enhanced cross-departmental alignment, and full regulatory traceability."
     }
 
     # Traceability Matrix
@@ -281,25 +281,23 @@ def build_brd(artifacts, project_name: str, project_description: str = "") -> Di
                 "priority": r.get("priority", "Must"),
                 "source": r.get("source", "Business Analyst Workspace"),
                 "mapped_story": r.get("mapped_story", r.get("traceability_id", f"US-{i+1:03d}")),
-                "owner": r.get("owner", "Engineering Lead"),
+                "owner": r.get("owner", "Operations Lead"),
                 "status": r.get("status", "Approved")
             }
             for i, r in enumerate(func_reqs[:20])
         ] or ([
-            {"id": "FR-001", "description": "Users must be able to authenticate using email/password or OAuth SSO with MFA", "priority": "Must", "source": "BA Workspace", "mapped_story": "US-001", "owner": "Security Team", "status": "Approved"},
-            {"id": "FR-002", "description": "Authenticated users must view dynamic metrics and workspace dashboards in real-time", "priority": "Must", "source": "BA Workspace", "mapped_story": "US-002", "owner": "Frontend Team", "status": "Approved"},
-            {"id": "FR-003", "description": "System must maintain an immutable audit trail log of all workspace modifications", "priority": "Must", "source": "Compliance Policy", "mapped_story": "US-003", "owner": "Backend Team", "status": "Approved"}
+            {"id": "FR-001", "description": "The platform must provide customer self-service registration and profile management capabilities.", "priority": "Must", "source": "BA Workspace", "mapped_story": "US-001", "owner": "Customer Experience Team", "status": "Approved"},
+            {"id": "FR-002", "description": "Authorized managers must view real-time operational status dashboards and delivery performance metrics.", "priority": "Must", "source": "BA Workspace", "mapped_story": "US-002", "owner": "Business Operations Team", "status": "Approved"},
+            {"id": "FR-003", "description": "The system must maintain an immutable business audit ledger tracking all critical transaction state changes.", "priority": "Must", "source": "Compliance Policy", "mapped_story": "US-003", "owner": "Governance & Legal Team", "status": "Approved"}
         ] if use_fallbacks else []),
 
         "non_functional_requirements": nonfunc_reqs or ([
-            {"id": "NFR-001", "category": "Performance", "description": "API response latency must remain under 200ms at p95 under standard load.", "priority": "Must"},
-            {"id": "NFR-002", "category": "Security", "description": "All data in transit must be encrypted with TLS 1.3 and at rest with AES-256.", "priority": "Must"},
-            {"id": "NFR-003", "category": "Availability", "description": "System availability must maintain 99.9% uptime SLA.", "priority": "Must"},
-            {"id": "NFR-004", "category": "Scalability", "description": "Database tier must dynamically scale to support 10,000 concurrent sessions.", "priority": "Should"},
-            {"id": "NFR-005", "category": "Maintainability", "description": "Codebase must achieve 85%+ automated unit test coverage.", "priority": "Should"},
-            {"id": "NFR-006", "category": "Accessibility", "description": "UI components must satisfy WCAG 2.1 Level AA accessibility standards.", "priority": "Should"},
-            {"id": "NFR-007", "category": "Compliance", "description": "System must comply with SOC 2 Type II, ISO 27001, and GDPR guidelines.", "priority": "Must"},
-            {"id": "NFR-008", "category": "Reliability", "description": "Automated failover must restore service within 30 seconds of node outage.", "priority": "Must"}
+            {"id": "NFR-001", "category": "Performance Benchmark", "description": "Business process execution and page responses must fulfill operational SLA standards under peak load.", "priority": "Must"},
+            {"id": "NFR-002", "category": "Data Governance", "description": "All customer records and business data must satisfy enterprise privacy policy and data security mandates.", "priority": "Must"},
+            {"id": "NFR-003", "category": "Service Availability", "description": "The business application must maintain continuous availability to support operational business hours.", "priority": "Must"},
+            {"id": "NFR-004", "category": "Business Scalability", "description": "The platform architecture must seamlessly scale to support projected 300% operational transaction volume growth.", "priority": "Should"},
+            {"id": "NFR-005", "category": "Usability & Accessibility", "description": "User interfaces must deliver an intuitive user experience adhering to corporate design and accessibility standards.", "priority": "Should"},
+            {"id": "NFR-006", "category": "Regulatory Compliance", "description": "System operations must comply fully with SOC 2, ISO 27001, and GDPR enterprise regulatory frameworks.", "priority": "Must"}
         ] if use_fallbacks else []),
 
         "business_rules": rules_out,
@@ -316,10 +314,10 @@ def build_brd(artifacts, project_name: str, project_description: str = "") -> Di
         ],
 
         "approval_matrix": [
-            {"approver": "Executive Sponsor", "role": "VP of Engineering", "status": "APPROVED", "date": date_str, "remarks": "Full budget and strategic alignment sign-off."},
-            {"approver": "Product Owner", "role": "Lead Product Manager", "status": "APPROVED", "date": date_str, "remarks": "User story scope and backlog prioritisation approved."},
-            {"approver": "Lead Business Analyst", "role": "Principal BA", "status": "APPROVED", "date": date_str, "remarks": "Requirements specification verified against IEEE 830 standards."},
-            {"approver": "Solution Architect", "role": "Principal Architect", "status": "APPROVED", "date": date_str, "remarks": "Architectural feasibility and non-functional targets approved."}
+            {"approver": "Executive Sponsor", "role": "VP of Operations", "status": "APPROVED", "date": date_str, "remarks": "Full strategic alignment and budget approval."},
+            {"approver": "Product Owner", "role": "Lead Product Manager", "status": "APPROVED", "date": date_str, "remarks": "User story backlog and business capabilities approved."},
+            {"approver": "Lead Business Analyst", "role": "Principal BA", "status": "APPROVED", "date": date_str, "remarks": "Business requirements specification verified against enterprise standards."},
+            {"approver": "Operations Manager", "role": "Director of Operations", "status": "APPROVED", "date": date_str, "remarks": "Operational process workflow and SLA targets approved."}
         ]
     }
 
