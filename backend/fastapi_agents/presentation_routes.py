@@ -1471,15 +1471,17 @@ def _register(app_router: APIRouter, get_db_fn, get_current_user_fn, models, ws_
             except Exception as exc:
                 logger.warning("[VideoRender] slide_deck_builder failed: %s", exc)
 
-        # ── Synchronize user's edited script from PostgreSQL to every slide ──
+        # ── Synchronize speaker_notes across slides (preserve payload speaker_notes) ──
         for idx, slide in enumerate(slides):
-            title_key = (slide.get("title") or "").strip().lower()
-            if idx in db_slides_by_index:
-                slide["speaker_notes"] = db_slides_by_index[idx]
-                slide["narration"] = db_slides_by_index[idx]
-            elif title_key in db_slides_by_title:
-                slide["speaker_notes"] = db_slides_by_title[title_key]
-                slide["narration"] = db_slides_by_title[title_key]
+            if "speaker_notes" not in slide or slide["speaker_notes"] is None:
+                title_key = (slide.get("title") or "").strip().lower()
+                if idx in db_slides_by_index:
+                    slide["speaker_notes"] = db_slides_by_index[idx]
+                elif title_key in db_slides_by_title:
+                    slide["speaker_notes"] = db_slides_by_title[title_key]
+                else:
+                    slide["speaker_notes"] = slide.get("narration") or ""
+            slide["narration"] = slide.get("speaker_notes") or ""
 
         if not slides:
             raise HTTPException(422, "No slides found. Generate a presentation first.")
@@ -2001,14 +2003,7 @@ def _register(app_router: APIRouter, get_db_fn, get_current_user_fn, models, ws_
 
     # ── Database-Backed Script Persistence Endpoints ─────────────────────────
     @app_router.post("/projects/{project_id}/presentation/script", summary="Persist updated slides & narration script to database")
-    def save_presentation_script(
-        project_id: int,
-        payload: dict,
-        db: Session = Depends(get_db_fn),
-        current_user=Depends(get_current_user_fn),
-    ):
-        """Persists updated slides (including title, subtitle, content, speaker_notes, layout, duration)
-        to PostgreSQL database as the Single Source of Truth for the presentation artifact."""
+    async def save_presentation_script(project_id: int, payload: dict, db: Session = Depends(get_db_fn), current_user=Depends(get_current_user_fn)):
         proj = db.get(Project, project_id)
         if not proj:
             raise HTTPException(404, f"Project {project_id} not found")
@@ -2017,41 +2012,58 @@ def _register(app_router: APIRouter, get_db_fn, get_current_user_fn, models, ws_
         if slides is None or not isinstance(slides, list):
             raise HTTPException(422, "Payload must contain a 'slides' list")
 
-        pres_art = (
+        pres_arts = (
             db.query(GeneratedArtifact)
             .filter(
                 GeneratedArtifact.project_id == project_id,
                 GeneratedArtifact.artifact_type.in_(["presentation", "presentation_pptx"]),
             )
             .order_by(GeneratedArtifact.created_at.desc())
-            .first()
+            .all()
         )
 
         existing_data = {}
-        if pres_art and pres_art.content:
+        if pres_arts and pres_arts[0].content:
             try:
-                existing_data = json.loads(pres_art.content)
+                existing_data = json.loads(pres_arts[0].content)
             except Exception:
                 existing_data = {}
 
-        # Merge updated slides with existing presentation metadata
+        # Overwrite slides & legacy structures with exact user script
         existing_data["slides"] = slides
         existing_data["speaker_notes"] = [
             {"slide_number": i + 1, "notes": s.get("speaker_notes", "")}
             for i, s in enumerate(slides)
         ]
-        if "slide_outline" in existing_data and isinstance(existing_data["slide_outline"], list):
-            for i, s in enumerate(slides):
-                if i < len(existing_data["slide_outline"]):
-                    existing_data["slide_outline"][i]["notes"] = s.get("speaker_notes", "")
+        new_outline = []
+        existing_outline = existing_data.get("slide_outline") if isinstance(existing_data.get("slide_outline"), list) else []
+        for i, s in enumerate(slides):
+            if i < len(existing_outline) and isinstance(existing_outline[i], dict):
+                item = dict(existing_outline[i])
+                item["title"] = s.get("title", f"Slide {i + 1}")
+                item["subtitle"] = s.get("subtitle", "")
+                item["notes"] = s.get("speaker_notes", "")
+                new_outline.append(item)
+            else:
+                new_outline.append({
+                    "slide_number": i + 1,
+                    "title": s.get("title", f"Slide {i + 1}"),
+                    "subtitle": s.get("subtitle", ""),
+                    "slide_type": s.get("layout", "content"),
+                    "notes": s.get("speaker_notes", ""),
+                    "key_points": [p.lstrip("• ").strip() for p in (s.get("content") or "").split("\n") if p.strip()]
+                })
+        existing_data["slide_outline"] = new_outline
         updated_content = json.dumps(existing_data, ensure_ascii=False)
 
         now = datetime.now(timezone.utc)
-        if pres_art:
-            pres_art.content = updated_content
-            pres_art.created_at = now
+        if pres_arts:
+            for art in pres_arts:
+                art.content = updated_content
+                art.created_at = now
             db.flush()
-            artifact_id = pres_art.id
+            db.commit()
+            artifact_id = pres_arts[0].id
         else:
             pres_art = GeneratedArtifact(
                 project_id=project_id,
@@ -2061,10 +2073,8 @@ def _register(app_router: APIRouter, get_db_fn, get_current_user_fn, models, ws_
             )
             db.add(pres_art)
             db.flush()
+            db.commit()
             artifact_id = pres_art.id
-
-        db.commit()
-        logger.info("[PresentationScript] Successfully persisted updated script & slides for project %s (artifact_id=%s, slide_count=%d)", project_id, artifact_id, len(slides))
 
         return {
             "success": True,
@@ -2076,12 +2086,7 @@ def _register(app_router: APIRouter, get_db_fn, get_current_user_fn, models, ws_
         }
 
     @app_router.get("/projects/{project_id}/presentation/script", summary="Retrieve latest persisted presentation slides & script")
-    def get_presentation_script(
-        project_id: int,
-        db: Session = Depends(get_db_fn),
-        current_user=Depends(get_current_user_fn),
-    ):
-        """Retrieves the latest persisted presentation slides & narration script from PostgreSQL."""
+    async def get_presentation_script(project_id: int, db: Session = Depends(get_db_fn), current_user=Depends(get_current_user_fn)):
         pres_art = (
             db.query(GeneratedArtifact)
             .filter(

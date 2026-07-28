@@ -1003,9 +1003,13 @@ export function VideoGenerationWorkspace() {
   const [showExport, setShowExport] = useState(false);
   const [showDiagram, setShowDiagram] = useState(false);
   const [showScript, setShowScript] = useState(false);
-  const [scriptDraft, setScriptDraft] = useState('');
-  const [initialScriptDraft, setInitialScriptDraft] = useState('');
+  const [scriptNotesMap, setScriptNotesMap] = useState<Record<number, string>>({});
+  const [initialScriptNotesMap, setInitialScriptNotesMap] = useState<Record<number, string>>({});
   const [lastScriptSavedTime, setLastScriptSavedTime] = useState<string | null>(null);
+
+  const hasUnsavedScriptChanges = useMemo(() => {
+    return slides.some((_, i) => (scriptNotesMap[i] ?? '') !== (initialScriptNotesMap[i] ?? ''));
+  }, [slides, scriptNotesMap, initialScriptNotesMap]);
   const [aiActionLoading, setAiActionLoading] = useState<AiAction | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfMode, setPdfMode] = useState(false); // when true, render from PDF instead of slides
@@ -1049,44 +1053,61 @@ export function VideoGenerationWorkspace() {
     }).catch(() => {});
   }, [projectId]);
 
+  // Guard to track if database slides (Single Source of Truth) have been loaded or updated
+  const hasLoadedDbRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    hasLoadedDbRef.current = false;
+  }, [projectId]);
+
   // ── Load slides from Database (Single Source of Truth) or fallback ────────
   useEffect(() => {
     let isMounted = true;
     if (!projectId) { setLoadingSlides(false); return; }
 
     const loadPersistedSlides = async () => {
+      // If database slides were already loaded, prevent artifacts prop updates from overwriting with stale initial data
+      if (hasLoadedDbRef.current) {
+        setLoadingSlides(false);
+        return;
+      }
+
       setLoadingSlides(true);
 
       // Priority 1 (Single Source of Truth): Database API GET /projects/{projectId}/presentation/script
       try {
         const dbRes = await fastApiRequest<{ found: boolean; slides: any[] }>(`/projects/${projectId}/presentation/script`);
+
         if (isMounted && dbRes.found && Array.isArray(dbRes.slides) && dbRes.slides.length > 0) {
           const dbSlides: Slide[] = dbRes.slides.map((s: any, i: number) => ({
             id: s.id || String(i),
             title: s.title || '',
             subtitle: s.subtitle || '',
             content: s.content || s.body || '',
-            speaker_notes: s.speaker_notes || s.narration || s.notes || '',
+            speaker_notes: typeof s.speaker_notes === 'string' ? s.speaker_notes : (s.narration || s.notes || ''),
             layout: (s.layout || (i === 0 ? 'title' : 'content')) as SlideLayout,
             duration: s.duration || 30,
           }));
+          hasLoadedDbRef.current = true;
           dispatch({ type: 'SET', slides: dbSlides });
           localStorage.setItem(`slides_${projectId}`, JSON.stringify(dbSlides));
           setLoadingSlides(false);
           return;
         }
-      } catch { /* fall through to artifacts / localStorage */ }
+      } catch (err) {
+        // fall through to fallbacks only if DB call failed
+      }
 
-      // Priority 2: Fallback to existing GeneratedArtifacts in props
+      // Priority 2: Fallback to existing GeneratedArtifacts in props (only if DB has no persisted slides yet)
       const presArt = artifacts.find(a => a.artifact_type === 'presentation' || a.artifact_type === 'presentation_pptx');
-      if (presArt) {
+      if (presArt && !hasLoadedDbRef.current) {
         try {
           const data = typeof presArt.content === 'string' ? JSON.parse(presArt.content) : presArt.content;
           const rawSlides: Slide[] = [];
           if (data.slides?.length) {
             data.slides.forEach((s: any, i: number) => rawSlides.push({
               id: s.id || String(i), title: s.title || '', subtitle: s.subtitle || '',
-              content: s.content || s.body || '', speaker_notes: s.speaker_notes || s.narration || '',
+              content: s.content || s.body || '', speaker_notes: typeof s.speaker_notes === 'string' ? s.speaker_notes : (s.narration || ''),
               layout: (s.layout || (i === 0 ? 'title' : 'content')) as SlideLayout, duration: s.duration || 30,
             }));
           } else if (data.slide_outline?.length) {
@@ -1110,14 +1131,18 @@ export function VideoGenerationWorkspace() {
 
       // Priority 3: LocalStorage (temporary offline/draft cache only)
       const saved = localStorage.getItem(`slides_${projectId}`);
-      if (saved && isMounted) {
+      if (saved && isMounted && !hasLoadedDbRef.current) {
         try {
           const parsed = JSON.parse(saved) as Slide[];
-          if (parsed.length > 0) { dispatch({ type: 'SET', slides: parsed }); setLoadingSlides(false); return; }
+          if (parsed.length > 0) {
+            dispatch({ type: 'SET', slides: parsed });
+            setLoadingSlides(false);
+            return;
+          }
         } catch { /* fall through */ }
       }
 
-      if (isMounted) {
+      if (isMounted && !hasLoadedDbRef.current) {
         dispatch({ type: 'SET', slides: getDefaultSlides() });
         setLoadingSlides(false);
       }
@@ -1197,52 +1222,26 @@ export function VideoGenerationWorkspace() {
     setActiveIdx(to);
   }, [setSlides]);
 
-  // ── AI action ─────────────────────────────────────────────────────────────
-  // Editable narration script, scoped to the currently-selected slide range.
-  const scriptSlideMarker = (i: number, title: string) => `=== Slide ${i + 1} • ${title || 'Untitled'} ===\n[Voice-over Narration]`;
+  // ── Per-slide narration editor state (no parser, no text markers) ─────────
   const openScriptEditor = useCallback(() => {
-    const indices = selectedSlideIndices ? [...selectedSlideIndices].sort((a, b) => a - b) : slides.map((_, i) => i);
-    const draft = indices.map(i => `${scriptSlideMarker(i, slides[i]?.title)}\n${slides[i]?.speaker_notes || ''}`).join('\n\n');
-    setScriptDraft(draft);
-    setInitialScriptDraft(draft);
+    const map: Record<number, string> = {};
+    slides.forEach((s, i) => {
+      map[i] = typeof s.speaker_notes === 'string' ? s.speaker_notes : (s.narration || '');
+    });
+    setScriptNotesMap(map);
+    setInitialScriptNotesMap({ ...map });
     setShowScript(true);
-  }, [slides, selectedSlideIndices]);
+  }, [slides]);
 
-  // Strips a leading "=== Slide N • Title ===" marker line if still present
-  const stripMarkerLine = (block: string) =>
-    block.replace(/^===\s*Slide\s+\d+[^=]*===\s*\n?(\[Voice-over Narration\]\s*\n?)?/i, '').trim();
+  const updateScriptNote = useCallback((idx: number, text: string) => {
+    setScriptNotesMap(prev => ({ ...prev, [idx]: text }));
+  }, []);
 
   const saveScriptEditor = useCallback(async () => {
-    const indices = selectedSlideIndices ? [...selectedSlideIndices].sort((a, b) => a - b) : slides.map((_, i) => i);
-
-    let updatedSlides = slides;
-    // Single slide being edited
-    if (indices.length === 1) {
-      const text = stripMarkerLine(scriptDraft);
-      const idx = indices[0];
-      updatedSlides = slides.map((s, i) => i === idx ? { ...s, speaker_notes: text } : s);
-    } else {
-      // Multiple slides: split on marker lines
-      let blocks = scriptDraft.split(/(?=\s*===\s*Slide\s+\d+)/i).map(b => b.trim()).filter(Boolean);
-      let notesByIndex = new Map<number, string>();
-      blocks.forEach(block => {
-        const match = block.match(/^===\s*Slide\s+(\d+)[^=]*===\s*\n?(\[Voice-over Narration\]\s*\n?)?([\s\S]*)$/i);
-        if (match) {
-          notesByIndex.set(parseInt(match[1], 10) - 1, (match[3] || '').trim());
-        }
-      });
-
-      if (notesByIndex.size === 0 && blocks.length === indices.length) {
-        indices.forEach((idx, pos) => notesByIndex.set(idx, stripMarkerLine(blocks[pos])));
-      }
-
-      if (notesByIndex.size === 0 && scriptDraft.trim() !== '') {
-        addToast("Couldn't tell which slide each part of the script belongs to — keep each slide's \"=== Slide N ===\" header line intact, or edit one slide at a time.", 'error');
-        return;
-      }
-
-      updatedSlides = slides.map((s, i) => notesByIndex.has(i) ? { ...s, speaker_notes: notesByIndex.get(i)! } : s);
-    }
+    const updatedSlides = slides.map((s, i) => ({
+      ...s,
+      speaker_notes: scriptNotesMap[i] !== undefined ? scriptNotesMap[i] : (s.speaker_notes || '')
+    }));
 
     // 1. Update React local state & localStorage backup
     setSlides(updatedSlides);
@@ -1253,7 +1252,7 @@ export function VideoGenerationWorkspace() {
     const formattedTime = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) +
       ' • ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-    // 2. Persist to PostgreSQL database as Single Source of Truth
+    // 2. Persist directly to PostgreSQL database as Single Source of Truth
     if (projectId) {
       try {
         const res = await fastApiRequest<{ success: boolean }>(`/projects/${projectId}/presentation/script`, {
@@ -1261,7 +1260,8 @@ export function VideoGenerationWorkspace() {
           body: { slides: updatedSlides },
         });
         if (res.success) {
-          setInitialScriptDraft(scriptDraft);
+          hasLoadedDbRef.current = true;
+          setInitialScriptNotesMap({ ...scriptNotesMap });
           setLastScriptSavedTime(formattedTime);
           setShowScript(false);
           addToast('✔ Voice-over narration saved successfully. Your updated narration will be used for the next video generation.', 'success');
@@ -1274,11 +1274,11 @@ export function VideoGenerationWorkspace() {
       }
     }
 
-    setInitialScriptDraft(scriptDraft);
+    setInitialScriptNotesMap({ ...scriptNotesMap });
     setLastScriptSavedTime(formattedTime);
     setShowScript(false);
     addToast('✔ Voice-over narration saved successfully. Your updated narration will be used for the next video generation.', 'success');
-  }, [scriptDraft, slides, selectedSlideIndices, projectId, setSlides, addToast]);
+  }, [scriptNotesMap, slides, projectId, setSlides, addToast]);
 
   // Regenerate just the active slide's diagram — never touches other slides.
   const [diagramRegenLoading, setDiagramRegenLoading] = useState(false);
@@ -2387,11 +2387,11 @@ export function VideoGenerationWorkspace() {
 
               {/* Narration confirmation status in Generate Modal */}
               <div className={`rounded-xl border p-3.5 flex items-center justify-between text-xs ${
-                scriptDraft.trim() !== initialScriptDraft.trim() && showScript
+                hasUnsavedScriptChanges && showScript
                   ? 'border-ey-yellow/40 bg-ey-yellow/10'
                   : 'border-status-success/30 bg-status-success/5'
               }`}>
-                {scriptDraft.trim() !== initialScriptDraft.trim() && showScript ? (
+                {hasUnsavedScriptChanges && showScript ? (
                   <div className="flex items-center gap-2 text-ey-yellow font-medium">
                     <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                     <span>⚠ Unsaved narration changes detected. Save your narration before generating the video.</span>
@@ -2434,7 +2434,7 @@ export function VideoGenerationWorkspace() {
               <button onClick={() => setShowGenerateModal(false)} className="btn-secondary flex-1">Cancel</button>
               <button
                 onClick={startRender}
-                disabled={rendering || slides.length === 0 || selectedSlides.length === 0 || (scriptDraft.trim() !== initialScriptDraft.trim() && showScript)}
+                disabled={rendering || slides.length === 0 || selectedSlides.length === 0 || (hasUnsavedScriptChanges && showScript)}
                 className="btn-primary flex-1 disabled:opacity-40"
               >
                 <Sparkles className="mr-2 h-4 w-4" />
@@ -2455,17 +2455,17 @@ export function VideoGenerationWorkspace() {
       {showDiagram && <DiagramGenerator projectId={projectId} onClose={() => setShowDiagram(false)}
         onInsert={code => { if (activeSlide) updateSlide(activeIdx, 'speaker_notes', (activeSlide.speaker_notes||'') + '\n\n[DIAGRAM]\n' + code); }} />}
 
-      {/* 🎙️ Final Video Narration Script Modal — scoped to the currently-selected slide range */}
+      {/* 🎙️ Final Video Narration Script Modal — Per-Slide Card Architecture */}
       {showScript && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-3xl rounded-2xl border border-dark-border bg-dark-card shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="w-full max-w-4xl rounded-2xl border border-dark-border bg-dark-card shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between border-b border-dark-border px-6 py-4 bg-dark-bg/50">
               <div>
                 <h2 className="text-lg font-bold text-text-primary flex items-center gap-2">
-                  🎙️ Final Video Narration
+                  🎙️ Final Video Narration Script Editor
                 </h2>
                 <p className="text-xs text-text-muted mt-1">
-                  Edit the narration that will be spoken during the final AI-generated presentation video. Any changes you save here will be used as the voice-over when generating the video.
+                  Edit per-slide voice-over narration directly. Each slide is bound to its own dedicated editor card.
                 </p>
               </div>
               <button onClick={() => setShowScript(false)} className="rounded-lg p-2 text-text-muted hover:bg-dark-bg">
@@ -2475,7 +2475,7 @@ export function VideoGenerationWorkspace() {
 
             <div className="p-6 space-y-4 overflow-y-auto flex-1">
               {/* Status Card */}
-              {scriptDraft.trim() === initialScriptDraft.trim() ? (
+              {!hasUnsavedScriptChanges ? (
                 <div className="rounded-xl border border-status-success/30 bg-status-success/5 p-3.5 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-status-success flex-shrink-0" />
@@ -2502,21 +2502,52 @@ export function VideoGenerationWorkspace() {
                 </div>
               )}
 
-              <div>
-                <div className="flex justify-between items-center mb-1.5">
-                  <label className="text-xs font-semibold text-text-primary uppercase tracking-wider">
-                    Voice-over Script Editor ({selectedSlides.length} of {slides.length} slides)
-                  </label>
-                  <span className="text-[10px] text-text-muted">
-                    Format: Keep slide headers intact to map per-slide narration
-                  </span>
-                </div>
-                <textarea
-                  value={scriptDraft}
-                  onChange={e => setScriptDraft(e.target.value)}
-                  rows={14}
-                  className="w-full rounded-xl border border-dark-border bg-dark-bg p-4 text-xs font-mono text-text-primary focus:border-ey-yellow focus:outline-none transition-all leading-relaxed shadow-inner"
-                />
+              {/* Per-slide Narration Cards */}
+              <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-1">
+                {slides.map((slide, i) => (
+                  <div key={slide.id || i} className="rounded-xl border border-dark-border bg-dark-bg/60 p-4 space-y-2 hover:border-ey-yellow/30 transition-all">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="bg-ey-yellow/10 text-ey-yellow border border-ey-yellow/30 text-[11px] font-bold px-2.5 py-0.5 rounded-md">
+                          Slide {i + 1}
+                        </span>
+                        <h4 className="text-xs font-semibold text-text-primary truncate max-w-md">
+                          {slide.title || 'Untitled Slide'}
+                        </h4>
+                        <span className="text-[10px] text-text-muted uppercase px-1.5 py-0.5 rounded bg-dark-card border border-dark-border">
+                          {slide.layout || 'content'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3 text-[11px]">
+                        <span className="text-text-muted text-[10px]">
+                          {(scriptNotesMap[i] || '').length} chars
+                        </span>
+                        {scriptNotesMap[i] ? (
+                          <button
+                            onClick={() => updateScriptNote(i, '')}
+                            className="text-status-error/80 hover:text-status-error hover:underline text-[10px] font-medium"
+                            title="Clear this slide narration"
+                          >
+                            Clear Text
+                          </button>
+                        ) : (
+                          <span className="text-status-warning text-[10px] font-medium bg-status-warning/10 px-2 py-0.5 rounded">
+                            Empty
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <textarea
+                      value={scriptNotesMap[i] ?? ''}
+                      onChange={e => updateScriptNote(i, e.target.value)}
+                      placeholder={`Enter voice-over narration text for Slide ${i + 1}...`}
+                      rows={3}
+                      className="w-full rounded-lg border border-dark-border bg-dark-card p-3 text-xs font-sans text-text-primary focus:border-ey-yellow focus:outline-none transition-all leading-relaxed shadow-inner"
+                    />
+                  </div>
+                ))}
               </div>
             </div>
 
