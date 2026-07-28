@@ -3118,8 +3118,9 @@ def _run_pipeline_inner(job, db_session_factory, save_artifact_fn):
         if job.captions:
             # Translated (spoken-language) narration for non-English voices —
             # see slide_display_narration above.
+            sn_val = slide["speaker_notes"] if "speaker_notes" in slide else slide.get("narration", "")
             cap_text = (slide_display_narration[i] if i < len(slide_display_narration) else "").strip() \
-                or (slide.get("speaker_notes") or slide.get("narration") or "").strip()
+                or str(sn_val or "").strip()
             if presenter_svc is not None:
                 if str(job.presenter_position).lower() == "left":
                     cl = 560
@@ -3221,14 +3222,16 @@ def _run_pipeline_inner(job, db_session_factory, save_artifact_fn):
         pct = int(40 + (i / total) * 30)
         _progress(job, pct, f"TTS: slide {i + 1}/{total}")
 
-        # The user's *actual* script (English source) — speaker_notes takes precedence
-        # over default narration to ensure user edits are synthesized.
-        user_source_narration = (slide.get("speaker_notes") or slide.get("narration") or "").strip()
-        # Last-resort text for the single-stage path (which has no per-section
-        # fill) — there, an on-screen-content read is still better than silence.
-        narration = user_source_narration or _clean_section_text_for_speech(
-            str(slide.get("content") or slide.get("title", ""))
-        )
+        # The user's *actual* script — speaker_notes takes precedence over default narration.
+        # If speaker_notes key exists (even if cleared to ""), respect it exactly.
+        if "speaker_notes" in slide:
+            user_source_narration = str(slide.get("speaker_notes") or "").strip()
+            narration = user_source_narration
+        else:
+            user_source_narration = str(slide.get("narration") or "").strip()
+            narration = user_source_narration or _clean_section_text_for_speech(
+                str(slide.get("content") or slide.get("title", ""))
+            )
         narration = (narration or "").strip()
         if len(narration) > 900:
             narration = narration[:900]

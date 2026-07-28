@@ -1428,11 +1428,11 @@ def _register(app_router: APIRouter, get_db_fn, get_current_user_fn, models, ws_
                 db_data = json.loads(latest_pres_art.content)
                 db_slides = db_data.get("slides") or []
                 for idx, s in enumerate(db_slides):
-                    sn = (s.get("speaker_notes") or s.get("narration") or "").strip()
-                    if sn:
-                        db_slides_by_index[idx] = sn
-                        if s.get("title"):
-                            db_slides_by_title[s.get("title").strip().lower()] = sn
+                    # Stored speaker_notes is authoritative (even if cleared to "")
+                    sn = s.get("speaker_notes") if "speaker_notes" in s else (s.get("narration") or "")
+                    db_slides_by_index[idx] = (sn or "").strip()
+                    if s.get("title"):
+                        db_slides_by_title[s.get("title").strip().lower()] = (sn or "").strip()
             except Exception as exc:
                 logger.warning("[VideoRender] Failed to parse latest DB presentation artifact: %s", exc)
 
@@ -1474,17 +1474,12 @@ def _register(app_router: APIRouter, get_db_fn, get_current_user_fn, models, ws_
         # ── Synchronize user's edited script from PostgreSQL to every slide ──
         for idx, slide in enumerate(slides):
             title_key = (slide.get("title") or "").strip().lower()
-            persisted_notes = (
-                db_slides_by_index.get(idx)
-                or db_slides_by_title.get(title_key)
-                or slide.get("speaker_notes")
-                or slide.get("narration")
-                or ""
-            ).strip()
-
-            if persisted_notes:
-                slide["speaker_notes"] = persisted_notes
-                slide["narration"] = persisted_notes  # User edited script becomes authoritative for both keys
+            if idx in db_slides_by_index:
+                slide["speaker_notes"] = db_slides_by_index[idx]
+                slide["narration"] = db_slides_by_index[idx]
+            elif title_key in db_slides_by_title:
+                slide["speaker_notes"] = db_slides_by_title[title_key]
+                slide["narration"] = db_slides_by_title[title_key]
 
         if not slides:
             raise HTTPException(422, "No slides found. Generate a presentation first.")
@@ -2041,6 +2036,14 @@ def _register(app_router: APIRouter, get_db_fn, get_current_user_fn, models, ws_
 
         # Merge updated slides with existing presentation metadata
         existing_data["slides"] = slides
+        existing_data["speaker_notes"] = [
+            {"slide_number": i + 1, "notes": s.get("speaker_notes", "")}
+            for i, s in enumerate(slides)
+        ]
+        if "slide_outline" in existing_data and isinstance(existing_data["slide_outline"], list):
+            for i, s in enumerate(slides):
+                if i < len(existing_data["slide_outline"]):
+                    existing_data["slide_outline"][i]["notes"] = s.get("speaker_notes", "")
         updated_content = json.dumps(existing_data, ensure_ascii=False)
 
         now = datetime.now(timezone.utc)

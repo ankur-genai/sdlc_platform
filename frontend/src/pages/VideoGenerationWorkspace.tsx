@@ -1218,23 +1218,25 @@ export function VideoGenerationWorkspace() {
     let updatedSlides = slides;
     // Single slide being edited
     if (indices.length === 1) {
-      const text = stripMarkerLine(scriptDraft.trim());
+      const text = stripMarkerLine(scriptDraft);
       const idx = indices[0];
       updatedSlides = slides.map((s, i) => i === idx ? { ...s, speaker_notes: text } : s);
     } else {
       // Multiple slides: split on marker lines
-      let blocks = scriptDraft.split(/\n(?=\s*===\s*Slide\s+\d+)/i).map(b => b.trim()).filter(Boolean);
+      let blocks = scriptDraft.split(/(?=\s*===\s*Slide\s+\d+)/i).map(b => b.trim()).filter(Boolean);
       let notesByIndex = new Map<number, string>();
       blocks.forEach(block => {
         const match = block.match(/^===\s*Slide\s+(\d+)[^=]*===\s*\n?(\[Voice-over Narration\]\s*\n?)?([\s\S]*)$/i);
-        if (match) notesByIndex.set(parseInt(match[1], 10) - 1, match[3].trim());
+        if (match) {
+          notesByIndex.set(parseInt(match[1], 10) - 1, (match[3] || '').trim());
+        }
       });
 
       if (notesByIndex.size === 0 && blocks.length === indices.length) {
         indices.forEach((idx, pos) => notesByIndex.set(idx, stripMarkerLine(blocks[pos])));
       }
 
-      if (notesByIndex.size === 0) {
+      if (notesByIndex.size === 0 && scriptDraft.trim() !== '') {
         addToast("Couldn't tell which slide each part of the script belongs to — keep each slide's \"=== Slide N ===\" header line intact, or edit one slide at a time.", 'error');
         return;
       }
