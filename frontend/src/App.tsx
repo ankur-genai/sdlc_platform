@@ -49,6 +49,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<AIWorkspace />} />
       <Route path="/signin" element={<SignIn />} />
+      <Route path="/login" element={<SignIn />} />
+      <Route path="/signup" element={<SignIn />} />
       <Route
         path="/app"
         element={
