@@ -444,8 +444,12 @@ class ProviderConfigureOut(BaseModel):
 
 
 class ProviderTestRequest(BaseModel):
-    project_id: int
+    project_id: int | None = None
     provider_name: str
+    api_key: str | None = None
+    base_url: str | None = None
+    model: str | None = None
+    api_version: str | None = None
 
 
 class ProviderTestOut(BaseModel):

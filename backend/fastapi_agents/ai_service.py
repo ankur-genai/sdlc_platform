@@ -34,7 +34,7 @@ from typing import Any
 from .agents.llm_service import LLMService, build_cloud_config
 from .models import DEMO_MODE
 
-SUPPORTED_PROVIDERS = ["openai", "anthropic", "gemini", "groq", "azure_openai", "aws_bedrock", "openai_compatible", "ollama",
+SUPPORTED_PROVIDERS = ["openai", "azure_openai", "gemini", "groq", "openrouter", "vllm", "lmstudio", "anthropic", "aws_bedrock", "openai_compatible", "ollama",
                        "d_id", "openai_image", "google_imagen", "stability"]
 
 
@@ -63,9 +63,6 @@ def test_provider(
     start = time.monotonic()
     try:
         if provider_name == "d_id":
-            # D-ID is a video credential, not an LLM — never routed through
-            # LLMService. Checks /credits, which is read-only and costs zero
-            # D-ID credits (unlike POST /talks, which is billed on creation).
             from .agents.avatar_provider import DIDAvatarProvider
             if not api_key:
                 return {"reachable": False, "latency_ms": 0, "model_tested": "n/a",
@@ -74,12 +71,6 @@ def test_provider(
             latency = int((time.monotonic() - start) * 1000)
             return {"reachable": True, "latency_ms": latency, "model_tested": "d-id", "message": "Connection successful (0 credits used)"}
         if provider_name in ("openai_image", "google_imagen", "stability"):
-            # Image providers are not LLMs — never routed through LLMService.
-            # Deliberately does NOT generate a real image (that costs money on
-            # every one of these providers); a "Test Connection" click should
-            # never spend a user's image-generation budget. Stability has a
-            # genuine free balance-check endpoint; for the other two, presence
-            # of a well-formed key is reported as configured without a spend.
             if not api_key:
                 return {"reachable": False, "latency_ms": 0, "model_tested": "n/a",
                         "message": "No API key configured for this image provider."}
@@ -100,8 +91,9 @@ def test_provider(
         if provider_name == "ollama":
             LLMService(role="test", timeout=15).test_ollama()
         else:
+            effective_key = api_key or ("local-key" if provider_name in ("lmstudio", "vllm") else "")
             cfg = build_cloud_config(
-                provider_name, api_key or "", base_url=base_url, model=model, api_version=api_version
+                provider_name, effective_key, base_url=base_url, model=model, api_version=api_version
             )
             if not cfg:
                 return {"reachable": False, "latency_ms": 0, "model_tested": "n/a", "message": "No valid API key/endpoint configured for this provider."}

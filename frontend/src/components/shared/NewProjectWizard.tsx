@@ -32,6 +32,14 @@ import {
   Video,
   Upload,
   Loader2,
+  Plus,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  Cpu,
+  ShieldCheck,
+  Sliders,
+  RefreshCw,
 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { apiRequest, buildApiUrl } from '../../lib/api';
@@ -112,30 +120,119 @@ const buildTypes = [
   { id: 'private-enterprise', name: 'Private Enterprise', icon: Lock, description: 'Proprietary enterprise applications' },
 ];
 
-const byokProviders = [
-  { id: 'openai', name: 'OpenAI', placeholder: 'sk-...' },
-  { id: 'anthropic', name: 'Anthropic', placeholder: 'sk-ant-...' },
-  { id: 'gemini', name: 'Gemini', placeholder: 'AIza...' },
-  { id: 'azure-openai', name: 'Azure OpenAI', placeholder: 'Azure key...' },
-  { id: 'aws-bedrock', name: 'AWS Bedrock', placeholder: 'AKIA...' },
-  { id: 'ollama', name: 'Ollama', placeholder: 'http://localhost:11434' },
-];
+export interface BYOKConfigState {
+  enabled: boolean;
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  apiVersion: string;
+  organization: string;
+  testing?: boolean;
+  testStatus?: 'success' | 'error' | null;
+  testMessage?: string | null;
+  latencyMs?: number | null;
+}
 
-const providerMap: Record<string, string> = {
-  openai: 'openai',
-  anthropic: 'anthropic',
-  gemini: 'gemini',
-  'azure-openai': 'azure_openai',
-  'aws-bedrock': 'aws_bedrock',
-  ollama: 'ollama',
-};
+export interface ProviderFieldSpec {
+  key: 'apiKey' | 'baseUrl' | 'model' | 'apiVersion' | 'organization';
+  label: string;
+  type: 'text' | 'password' | 'select_or_text';
+  required: boolean;
+  default?: string;
+  placeholder?: string;
+  options?: string[];
+}
+
+export interface BYOKProviderSpec {
+  id: string;
+  name: string;
+  category: 'cloud' | 'opensource';
+  description: string;
+  fields: ProviderFieldSpec[];
+}
+
+const BYOK_PROVIDER_SPECS: BYOKProviderSpec[] = [
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    category: 'cloud',
+    description: 'GPT-4o, GPT-4o-mini & o1 model family',
+    fields: [
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'sk-proj-...' },
+      { key: 'model', label: 'Model', type: 'select_or_text', required: true, default: 'gpt-4o', options: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1-mini'] },
+      { key: 'organization', label: 'Organization ID (Optional)', type: 'text', required: false, placeholder: 'org-...' },
+    ],
+  },
+  {
+    id: 'azure_openai',
+    name: 'Azure OpenAI',
+    category: 'cloud',
+    description: 'Enterprise Azure OpenAI deployments',
+    fields: [
+      { key: 'baseUrl', label: 'Endpoint URL', type: 'text', required: true, placeholder: 'https://your-resource.openai.azure.com' },
+      { key: 'model', label: 'Deployment Name', type: 'text', required: true, placeholder: 'gpt-4o-deployment' },
+      { key: 'apiVersion', label: 'API Version', type: 'text', required: true, default: '2024-06-01', placeholder: '2024-06-01' },
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'Azure API Key...' },
+    ],
+  },
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    category: 'cloud',
+    description: 'Gemini 1.5 Pro, Flash & 2.0 Flash',
+    fields: [
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'AIzaSy...' },
+      { key: 'model', label: 'Model', type: 'select_or_text', required: true, default: 'gemini-1.5-pro', options: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash'] },
+    ],
+  },
+  {
+    id: 'groq',
+    name: 'Groq',
+    category: 'cloud',
+    description: 'Ultra-fast LPU inference (Llama 3.3 70B, Mixtral)',
+    fields: [
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'gsk_...' },
+      { key: 'model', label: 'Model', type: 'select_or_text', required: true, default: 'llama-3.3-70b-versatile', options: ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768', 'llama-3.1-8b-instant'] },
+    ],
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    category: 'opensource',
+    description: 'Unified API for 100+ open & proprietary LLMs',
+    fields: [
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'sk-or-v1-...' },
+      { key: 'model', label: 'Model Name', type: 'text', required: true, default: 'anthropic/claude-3.5-sonnet', placeholder: 'anthropic/claude-3.5-sonnet' },
+    ],
+  },
+  {
+    id: 'lmstudio',
+    name: 'LM Studio',
+    category: 'opensource',
+    description: 'Local LLM inference via LM Studio server',
+    fields: [
+      { key: 'baseUrl', label: 'Local Endpoint', type: 'text', required: true, default: 'http://localhost:1234/v1', placeholder: 'http://localhost:1234/v1' },
+      { key: 'model', label: 'Model Name', type: 'text', required: true, default: 'local-model', placeholder: 'local-model' },
+    ],
+  },
+  {
+    id: 'vllm',
+    name: 'vLLM',
+    category: 'opensource',
+    description: 'High-throughput local or hosted vLLM server',
+    fields: [
+      { key: 'baseUrl', label: 'Server URL', type: 'text', required: true, default: 'http://localhost:8000/v1', placeholder: 'http://localhost:8000/v1' },
+      { key: 'model', label: 'Model Name', type: 'text', required: true, default: 'meta-llama/Llama-3-8b-instruct', placeholder: 'meta-llama/Llama-3-8b-instruct' },
+    ],
+  },
+];
 
 const steps = [
   { id: 0, name: 'Project Details', icon: FileText },
   { id: 1, name: 'Project Type', icon: Boxes },
   { id: 2, name: 'Execution Mode', icon: Zap },
   { id: 3, name: 'Agents', icon: Bot },
-  { id: 4, name: 'Build & BYOK', icon: Cloud },
+  { id: 4, name: 'BYOK Settings', icon: Cloud },
   { id: 5, name: 'Review & Launch', icon: Rocket },
 ];
 
@@ -165,8 +262,7 @@ export function NewProjectWizard({ isOpen, onClose }: NewProjectWizardProps) {
   const [selectedAgentOptions, setSelectedAgentOptions] = useState<string[]>([]);
   const [frontendFramework, setFrontendFramework] = useState<'react' | 'angular'>('react');
   const [buildType, setBuildType] = useState<string>('private-enterprise');
-  const [providerSettings, setProviderSettings] = useState<Record<string, { enabled: boolean; keySource: 'platform' | 'user' }>>({});
-  const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  const [byokConfigs, setByokConfigs] = useState<Record<string, BYOKConfigState>>({});
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
   const [docUploading, setDocUploading] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
@@ -181,8 +277,7 @@ export function NewProjectWizard({ isOpen, onClose }: NewProjectWizardProps) {
     setSelectedAgentOptions([]);
     setFrontendFramework('react');
     setBuildType('private-enterprise');
-    setProviderSettings({});
-    setApiKeys({});
+    setByokConfigs({});
     setVisibleKeys({});
     setDocUploading(false);
     setDocError(null);
@@ -257,13 +352,102 @@ export function NewProjectWizard({ isOpen, onClose }: NewProjectWizardProps) {
     }
   };
 
-  const toggleProvider = (id: string) => {
-    setProviderSettings((prev) => ({
+  const toggleBYOKProvider = (spec: BYOKProviderSpec) => {
+    setByokConfigs((prev) => {
+      const existing = prev[spec.id];
+      if (existing && existing.enabled) {
+        return {
+          ...prev,
+          [spec.id]: { ...existing, enabled: false },
+        };
+      }
+      const defaults: Record<string, string> = {};
+      spec.fields.forEach((f) => {
+        if (f.default) defaults[f.key] = f.default;
+      });
+
+      return {
+        ...prev,
+        // Disable other providers so the selected one becomes active (or keep multiple enabled)
+        [spec.id]: {
+          enabled: true,
+          apiKey: existing?.apiKey || defaults['apiKey'] || '',
+          baseUrl: existing?.baseUrl || defaults['baseUrl'] || '',
+          model: existing?.model || defaults['model'] || '',
+          apiVersion: existing?.apiVersion || defaults['apiVersion'] || '',
+          organization: existing?.organization || defaults['organization'] || '',
+          testing: false,
+          testStatus: existing?.testStatus || null,
+          testMessage: existing?.testMessage || null,
+          latencyMs: existing?.latencyMs || null,
+        },
+      };
+    });
+  };
+
+  const removeBYOKProvider = (providerId: string) => {
+    setByokConfigs((prev) => {
+      const copy = { ...prev };
+      delete copy[providerId];
+      return copy;
+    });
+  };
+
+  const updateBYOKField = (providerId: string, fieldKey: string, val: string) => {
+    setByokConfigs((prev) => ({
       ...prev,
-      [id]: prev[id]?.enabled
-        ? { enabled: false, keySource: prev[id].keySource }
-        : { enabled: true, keySource: 'platform' },
+      [providerId]: {
+        ...prev[providerId],
+        [fieldKey]: val,
+        testStatus: null,
+        testMessage: null,
+      },
     }));
+  };
+
+  const handleTestConnection = async (providerId: string) => {
+    const cfg = byokConfigs[providerId];
+    if (!cfg) return;
+
+    setByokConfigs((prev) => ({
+      ...prev,
+      [providerId]: { ...prev[providerId], testing: true, testStatus: null, testMessage: null },
+    }));
+
+    try {
+      const res = await apiRequest<{ reachable: boolean; latency_ms: number; message: string }>('/providers/test', {
+        method: 'POST',
+        body: {
+          provider_name: providerId,
+          api_key: cfg.apiKey || '',
+          base_url: cfg.baseUrl || '',
+          model: cfg.model || '',
+          api_version: cfg.apiVersion || '',
+        },
+      });
+
+      setByokConfigs((prev) => ({
+        ...prev,
+        [providerId]: {
+          ...prev[providerId],
+          testing: false,
+          testStatus: res.reachable ? 'success' : 'error',
+          testMessage: res.message,
+          latencyMs: res.latency_ms,
+        },
+      }));
+    } catch (err) {
+      setByokConfigs((prev) => ({
+        ...prev,
+        [providerId]: {
+          ...prev[providerId],
+          testing: false,
+          testStatus: 'error',
+          testMessage: err instanceof Error ? err.message : 'Connection test failed',
+          latencyMs: null,
+        },
+      }));
+    }
   };
 
   const canProceed = () => {
@@ -299,12 +483,16 @@ export function NewProjectWizard({ isOpen, onClose }: NewProjectWizardProps) {
   const handleLaunch = async () => {
     setSaving(true);
     setLaunchError(null);
-    const providerPayload: Record<string, string> = {};
-    Object.entries(providerSettings).forEach(([k, v]) => {
-      const backendProvider = providerMap[k];
-      const apiKey = apiKeys[k]?.trim();
-      if (v.enabled && backendProvider && v.keySource === 'user' && apiKey) {
-        providerPayload[backendProvider] = apiKey;
+    const providerPayload: Record<string, any> = {};
+    Object.entries(byokConfigs).forEach(([id, cfg]) => {
+      if (cfg.enabled) {
+        providerPayload[id] = {
+          api_key: cfg.apiKey || '',
+          base_url: cfg.baseUrl || '',
+          model: cfg.model || '',
+          api_version: cfg.apiVersion || '',
+          organization: cfg.organization || '',
+        };
       }
     });
 
@@ -657,117 +845,205 @@ export function NewProjectWizard({ isOpen, onClose }: NewProjectWizardProps) {
                 </motion.div>
               )}
 
-              {/* Step 4: Build Type & BYOK */}
+              {/* Step 4: BYOK Settings Only */}
               {currentStep === 4 && (
                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-                  {/* Build Type */}
+                  {/* BYOK Settings */}
                   <div>
-                    <p className="text-sm font-medium text-text-primary mb-3">Build Type</p>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {buildTypes.map((type) => {
-                        const Icon = type.icon;
-                        const isSelected = buildType === type.id;
-                        return (
-                          <button
-                            key={type.id}
-                            onClick={() => setBuildType(type.id)}
-                            className={`flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-all ${
-                              isSelected
-                                ? 'border-ey-yellow bg-ey-yellow/10'
-                                : 'border-dark-border bg-dark-bg hover:border-dark-border-light'
-                            }`}
-                          >
-                            <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${isSelected ? 'bg-ey-yellow/20' : 'bg-dark-card'}`}>
-                              <Icon className={`h-5 w-5 ${isSelected ? 'text-ey-yellow' : 'text-text-secondary'}`} />
-                            </div>
-                            <p className={`text-xs font-medium ${isSelected ? 'text-ey-yellow' : 'text-text-primary'}`}>{type.name}</p>
-                          </button>
-                        );
-                      })}
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-sm font-medium text-text-primary">BYOK (Bring Your Own Key) Settings</p>
+                      <span className="text-[10px] text-ey-yellow bg-ey-yellow/10 border border-ey-yellow/20 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                        <Cpu className="h-3 w-3" /> Configurable Provider
+                      </span>
                     </div>
-                  </div>
-
-                  {/* BYOK */}
-                  <div>
-                    <p className="text-sm font-medium text-text-primary mb-1">BYOK Settings (Optional)</p>
-                    <p className="text-xs text-text-muted mb-3">
-                      Bring your own API keys, or use platform-managed keys for agent orchestration.
+                    <p className="text-xs text-text-muted mb-4">
+                      Configure custom AI LLM providers for project execution and agent orchestration.
                     </p>
-                    <div className="space-y-2">
-                      {byokProviders.map((provider) => {
-                        const settings = providerSettings[provider.id];
-                        const isEnabled = settings?.enabled || false;
-                        return (
-                          <div
-                            key={provider.id}
-                            className={`rounded-lg border p-3 transition-all ${
-                              isEnabled ? 'border-ey-yellow/30 bg-ey-yellow/5' : 'border-dark-border bg-dark-bg'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <Cloud className={`h-4 w-4 ${isEnabled ? 'text-ey-yellow' : 'text-text-muted'}`} />
-                                <span className="text-sm font-medium text-text-primary">{provider.name}</span>
-                              </div>
-                              <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={isEnabled}
-                                  onChange={() => toggleProvider(provider.id)}
-                                  className="sr-only peer"
-                                />
-                                <div className="w-9 h-5 rounded-full bg-dark-border peer-checked:bg-ey-yellow after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" />
-                              </label>
-                            </div>
-                            {isEnabled && (
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  {(['platform', 'user'] as const).map((src) => (
-                                    <button
-                                      key={src}
-                                      onClick={() =>
-                                        setProviderSettings((prev) => ({
-                                          ...prev,
-                                          [provider.id]: { enabled: true, keySource: src },
-                                        }))
-                                      }
-                                      className={`px-2 py-1 rounded text-[10px] transition-all ${
-                                        settings?.keySource === src
-                                          ? 'bg-ey-yellow/20 text-ey-yellow'
-                                          : 'bg-dark-bg text-text-muted hover:text-text-secondary'
-                                      }`}
-                                    >
-                                      {src === 'platform' ? 'Platform Key' : 'My Key'}
-                                    </button>
-                                  ))}
-                                </div>
-                                {settings?.keySource === 'user' && (
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type={visibleKeys[provider.id] ? 'text' : 'password'}
-                                      value={apiKeys[provider.id] || ''}
-                                      onChange={(e) =>
-                                        setApiKeys((prev) => ({ ...prev, [provider.id]: e.target.value }))
-                                      }
-                                      placeholder={provider.placeholder}
-                                      className="input-field flex-1 font-mono text-xs"
-                                    />
-                                    <button
-                                      onClick={() =>
-                                        setVisibleKeys((prev) => ({ ...prev, [provider.id]: !prev[provider.id] }))
-                                      }
-                                      className="rounded-lg border border-dark-border bg-dark-card p-2 text-text-muted hover:text-text-primary"
-                                    >
-                                      {visibleKeys[provider.id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                    </button>
+
+                    {/* Render by Category */}
+                    {(['cloud', 'opensource'] as const).map((cat) => {
+                      const specs = BYOK_PROVIDER_SPECS.filter((s) => s.category === cat);
+                      const title = cat === 'cloud' ? 'Cloud Providers' : 'Open Source / API-Based Providers';
+                      return (
+                        <div key={cat} className="mb-5">
+                          <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                            {cat === 'cloud' ? <Cloud className="h-3.5 w-3.5 text-ey-yellow" /> : <Globe className="h-3.5 w-3.5 text-ey-yellow" />}
+                            {title}
+                          </h4>
+                          <div className="space-y-3">
+                            {specs.map((spec) => {
+                              const config = byokConfigs[spec.id];
+                              const isEnabled = config?.enabled || false;
+                              return (
+                                <div
+                                  key={spec.id}
+                                  className={`rounded-lg border transition-all ${
+                                    isEnabled
+                                      ? 'border-ey-yellow/40 bg-ey-yellow/5 p-4 shadow-sm'
+                                      : 'border-dark-border bg-dark-bg/50 p-3 hover:border-dark-border-light'
+                                  }`}
+                                >
+                                  {/* Header Row */}
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleBYOKProvider(spec)}
+                                        className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                                          isEnabled ? 'bg-ey-yellow/20 text-ey-yellow' : 'bg-dark-card text-text-muted'
+                                        }`}
+                                      >
+                                        <Cloud className="h-4 w-4" />
+                                      </button>
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs font-semibold text-text-primary">{spec.name}</span>
+                                          {isEnabled && (
+                                            <span className="text-[10px] bg-status-success/10 text-status-success px-1.5 py-0.5 rounded font-medium">
+                                              Active Provider
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="text-[10px] text-text-muted">{spec.description}</p>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                      {isEnabled && (
+                                        <button
+                                          type="button"
+                                          onClick={() => removeBYOKProvider(spec.id)}
+                                          className="p-1.5 text-text-muted hover:text-status-error transition-colors rounded-lg hover:bg-dark-card"
+                                          title="Remove Provider"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+                                      <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={isEnabled}
+                                          onChange={() => toggleBYOKProvider(spec)}
+                                          className="sr-only peer"
+                                        />
+                                        <div className="w-8 h-4 rounded-full bg-dark-border peer-checked:bg-ey-yellow after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-full" />
+                                      </label>
+                                    </div>
                                   </div>
-                                )}
-                              </div>
-                            )}
+
+                                  {/* Dynamic Fields Form */}
+                                  {isEnabled && (
+                                    <motion.div
+                                      initial={{ opacity: 0, height: 0 }}
+                                      animate={{ opacity: 1, height: 'auto' }}
+                                      className="mt-4 pt-3 border-t border-dark-border/60 space-y-3"
+                                    >
+                                      <div className="grid gap-3 md:grid-cols-2">
+                                        {spec.fields.map((field) => {
+                                          const val = (config?.[field.key] as string) || '';
+                                          return (
+                                            <div key={field.key} className={field.key === 'baseUrl' || field.key === 'apiKey' ? 'md:col-span-2' : ''}>
+                                              <label className="text-[11px] font-medium text-text-secondary mb-1 flex items-center justify-between">
+                                                <span>{field.label} {field.required && <span className="text-status-error">*</span>}</span>
+                                              </label>
+
+                                              {field.type === 'password' ? (
+                                                <div className="relative flex items-center">
+                                                  <input
+                                                    type={visibleKeys[`${spec.id}_${field.key}`] ? 'text' : 'password'}
+                                                    value={val}
+                                                    onChange={(e) => updateBYOKField(spec.id, field.key, e.target.value)}
+                                                    placeholder={field.placeholder}
+                                                    className="input-field w-full pr-9 font-mono text-xs"
+                                                  />
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setVisibleKeys((prev) => ({ ...prev, [`${spec.id}_${field.key}`]: !prev[`${spec.id}_${field.key}`] }))}
+                                                    className="absolute right-2 text-text-muted hover:text-text-primary p-1"
+                                                  >
+                                                    {visibleKeys[`${spec.id}_${field.key}`] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                                                  </button>
+                                                </div>
+                                              ) : field.type === 'select_or_text' && field.options ? (
+                                                <div className="flex gap-2">
+                                                  <select
+                                                    value={val}
+                                                    onChange={(e) => updateBYOKField(spec.id, field.key, e.target.value)}
+                                                    className="input-field text-xs flex-1 bg-dark-bg cursor-pointer"
+                                                  >
+                                                    {field.options.map((opt) => (
+                                                      <option key={opt} value={opt}>{opt}</option>
+                                                    ))}
+                                                  </select>
+                                                  <input
+                                                    type="text"
+                                                    value={val}
+                                                    onChange={(e) => updateBYOKField(spec.id, field.key, e.target.value)}
+                                                    placeholder="Custom model..."
+                                                    className="input-field text-xs w-1/2"
+                                                  />
+                                                </div>
+                                              ) : (
+                                                <input
+                                                  type="text"
+                                                  value={val}
+                                                  onChange={(e) => updateBYOKField(spec.id, field.key, e.target.value)}
+                                                  placeholder={field.placeholder}
+                                                  className="input-field w-full text-xs"
+                                                />
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+
+                                      {/* Action bar: Test Connection & Status */}
+                                      <div className="flex items-center justify-between pt-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleTestConnection(spec.id)}
+                                          disabled={config.testing}
+                                          className="btn-ghost text-xs px-3 py-1.5 border border-ey-yellow/40 hover:border-ey-yellow text-ey-yellow rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                        >
+                                          {config.testing ? (
+                                            <>
+                                              <Loader2 className="h-3 w-3 animate-spin" />
+                                              Testing Connection...
+                                            </>
+                                          ) : (
+                                            <>
+                                              <RefreshCw className="h-3 w-3" />
+                                              Test Connection
+                                            </>
+                                          )}
+                                        </button>
+
+                                        {/* Status indicator badge */}
+                                        {config.testStatus === 'success' && (
+                                          <div className="flex items-center gap-1 text-[11px] text-status-success font-medium bg-status-success/10 px-2 py-1 rounded-md border border-status-success/20">
+                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                            <span>Tested & Verified ({config.latencyMs ?? 0}ms)</span>
+                                          </div>
+                                        )}
+                                        {config.testStatus === 'error' && (
+                                          <div className="flex items-center gap-1 text-[11px] text-status-error font-medium bg-status-error/10 px-2 py-1 rounded-md border border-status-error/20" title={config.testMessage || ''}>
+                                            <XCircle className="h-3.5 w-3.5" />
+                                            <span className="truncate max-w-[200px]">{config.testMessage || 'Connection Failed'}</span>
+                                          </div>
+                                        )}
+                                        {!config.testStatus && (
+                                          <span className="text-[10px] text-text-muted">Unverified — Click Test Connection to validate credentials</span>
+                                        )}
+                                      </div>
+                                    </motion.div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
-                    </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </motion.div>
               )}
@@ -804,13 +1080,6 @@ export function NewProjectWizard({ isOpen, onClose }: NewProjectWizardProps) {
                       </div>
                       <button onClick={() => setCurrentStep(2)} className="text-xs text-ey-yellow hover:text-ey-yellow/80">Edit</button>
                     </div>
-                    <div className="flex items-start justify-between pb-3 border-b border-dark-border">
-                      <div>
-                        <p className="text-xs text-text-muted">Build Type</p>
-                        <p className="text-sm font-medium text-text-primary mt-1">{selectedBuildType?.name || '-'}</p>
-                      </div>
-                      <button onClick={() => setCurrentStep(4)} className="text-xs text-ey-yellow hover:text-ey-yellow/80">Edit</button>
-                    </div>
                     {executionMode === 'manual' && (
                       <div className="pb-3 border-b border-dark-border">
                         <div className="flex items-center justify-between mb-2">
@@ -845,18 +1114,27 @@ export function NewProjectWizard({ isOpen, onClose }: NewProjectWizardProps) {
                       </div>
                     )}
                     <div>
-                      <p className="text-xs text-text-muted mb-2">Provider Settings</p>
+                      <p className="text-xs text-text-muted mb-2">Active BYOK Provider</p>
                       <div className="flex flex-wrap gap-2">
-                        {Object.entries(providerSettings).filter(([, v]) => v.enabled).length > 0 ? (
-                          Object.entries(providerSettings)
+                        {Object.entries(byokConfigs).filter(([, v]) => v.enabled).length > 0 ? (
+                          Object.entries(byokConfigs)
                             .filter(([, v]) => v.enabled)
-                            .map(([id, v]) => (
-                              <span key={id} className="inline-flex items-center gap-1 rounded-full bg-ey-yellow/10 px-2 py-1 text-xs text-ey-yellow">
-                                {byokProviders.find((p) => p.id === id)?.name} ({v.keySource === 'platform' ? 'Platform' : 'User Key'})
-                              </span>
-                            ))
+                            .map(([id, v]) => {
+                              const spec = BYOK_PROVIDER_SPECS.find((s) => s.id === id);
+                              return (
+                                <div key={id} className="inline-flex items-center gap-1.5 rounded-lg border border-ey-yellow/30 bg-ey-yellow/10 px-2.5 py-1 text-xs text-ey-yellow font-medium">
+                                  <Cloud className="h-3.5 w-3.5" />
+                                  <span>{spec?.name || id}</span>
+                                  {v.model && <span className="opacity-80 font-mono text-[10px]">({v.model})</span>}
+                                  {v.testStatus === 'success' && <CheckCircle2 className="h-3 w-3 text-status-success ml-1" />}
+                                </div>
+                              );
+                            })
                         ) : (
-                          <span className="text-xs text-text-muted">Using default platform keys</span>
+                          <div className="inline-flex items-center gap-1.5 rounded-lg border border-dark-border bg-dark-bg px-2.5 py-1 text-xs text-text-secondary">
+                            <ShieldCheck className="h-3.5 w-3.5 text-ey-yellow" />
+                            <span>Ollama (Built-in Local Provider Fallback)</span>
+                          </div>
                         )}
                       </div>
                     </div>

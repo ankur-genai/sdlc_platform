@@ -63,12 +63,18 @@ _DEFAULT_BASE_URLS = {
     "anthropic": "https://api.anthropic.com/v1",
     "gemini": "https://generativelanguage.googleapis.com/v1beta",
     "groq": "https://api.groq.com/openai/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "lmstudio": "http://localhost:1234/v1",
+    "vllm": "http://localhost:8000/v1",
 }
 _DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
     "anthropic": "claude-haiku-20240307",
     "gemini": "gemini-2.0-flash",
     "groq": "llama-3.3-70b-versatile",
+    "openrouter": "anthropic/claude-3.5-sonnet",
+    "lmstudio": "local-model",
+    "vllm": "meta-llama/Llama-3-8b-instruct",
 }
 
 # The provider values the deployment-wide default config accepts. Per-project
@@ -379,9 +385,13 @@ class LLMService:
                 ],
                 "temperature": temperature,
             }
-        else:  # "openai" or "openai_compatible" — identical Bearer-auth shape
+        else:  # "openai", "groq", "openrouter", "vllm", "lmstudio", "openai_compatible"
             url = f"{cfg.base_url.rstrip('/')}/chat/completions"
-            headers = {"Authorization": f"Bearer {cfg.api_key}", "Content-Type": "application/json", "User-Agent": _DEFAULT_UA}
+            auth_token = cfg.api_key or "local-key"
+            headers = {"Authorization": f"Bearer {auth_token}", "Content-Type": "application/json", "User-Agent": _DEFAULT_UA}
+            if cfg.provider == "openrouter":
+                headers["HTTP-Referer"] = "http://localhost:5173"
+                headers["X-Title"] = "EY SDLC Studio"
             body = {
                 "model": cfg.model,
                 "messages": [

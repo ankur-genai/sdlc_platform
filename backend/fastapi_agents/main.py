@@ -448,12 +448,28 @@ def create_project(
             status=RunStatus.PENDING.value,
         ))
 
-    for provider_name, raw_key in payload.providers.items():
+    for provider_key, provider_val in payload.providers.items():
+        p_name = provider_key.value if hasattr(provider_key, 'value') else str(provider_key)
+        raw_key = ""
+        base_url = None
+        model = None
+        api_version = None
+        if isinstance(provider_val, dict):
+            raw_key = provider_val.get("api_key") or provider_val.get("apiKey") or ""
+            base_url = provider_val.get("base_url") or provider_val.get("endpoint") or provider_val.get("baseUrl") or provider_val.get("server_url") or None
+            model = provider_val.get("model") or provider_val.get("deployment_name") or provider_val.get("model_name") or None
+            api_version = provider_val.get("api_version") or provider_val.get("apiVersion") or None
+        else:
+            raw_key = str(provider_val)
+
         db.add(ProviderConfiguration(
             project_id=project.id,
-            provider_name=provider_name.value,
+            provider_name=p_name,
             enabled=True,
-            encrypted_key=encrypt_secret(raw_key),
+            encrypted_key=encrypt_secret(raw_key) if raw_key else "",
+            base_url=base_url,
+            model=model,
+            api_version=api_version,
         ))
 
     db.add(TimelineEvent(project_id=project.id, stage="Project Created", status=RunStatus.COMPLETED.value))

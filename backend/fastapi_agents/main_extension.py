@@ -1184,22 +1184,13 @@ def export_artifact(
     current_user: User = Depends(get_current_user),
 ):
     """Export a single artifact by type as a downloadable file."""
-    q = db.query(GeneratedArtifact)
-    if projectId:
-        q = q.filter(GeneratedArtifact.project_id == projectId)
-    if artifact_type:
-        q = q.filter(GeneratedArtifact.artifact_type == artifact_type)
-    art = q.order_by(GeneratedArtifact.created_at.desc()).first()
-    if not art:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Artifact not found")
-
     if format.lower() == "pdf" and projectId:
         project = db.get(Project, projectId)
         proj_name = "Project"
         if project:
             proj_name = "".join(c for c in project.name if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")
         
-        if artifact_type == ArtifactType.REQUIREMENTS_DOC.value:
+        if artifact_type in (ArtifactType.REQUIREMENTS_DOC.value, "requirements_doc"):
             from .pdf_generator import generate_srs_pdf
             try:
                 pdf_buf = generate_srs_pdf(projectId, db)
@@ -1213,7 +1204,7 @@ def export_artifact(
                 logger.error("[Export] SRS PDF generation failed: %s", exc, exc_info=True)
                 raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"PDF generation failed: {exc}")
                 
-        elif artifact_type == ArtifactType.USER_STORIES.value:
+        elif artifact_type in (ArtifactType.USER_STORIES.value, "user_stories"):
             from .pdf_generator import generate_brd_pdf
             try:
                 pdf_buf = generate_brd_pdf(projectId, db)
@@ -1226,6 +1217,57 @@ def export_artifact(
             except Exception as exc:
                 logger.error("[Export] BRD PDF generation failed: %s", exc, exc_info=True)
                 raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"PDF generation failed: {exc}")
+
+        elif artifact_type in (ArtifactType.SECURITY_REPORT.value, "security_report", "security_architecture"):
+            from .pdf_generator import generate_security_pdf
+            try:
+                pdf_buf = generate_security_pdf(projectId, db)
+                filename = f"{proj_name}_Security_Architecture_Report.pdf"
+                return StreamingResponse(
+                    pdf_buf,
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                )
+            except Exception as exc:
+                logger.error("[Export] Security PDF generation failed: %s", exc, exc_info=True)
+                raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"PDF generation failed: {exc}")
+
+        elif artifact_type in (ArtifactType.COMPLIANCE_REPORT.value, "compliance_report", "compliance_architecture"):
+            from .pdf_generator import generate_compliance_pdf
+            try:
+                pdf_buf = generate_compliance_pdf(projectId, db)
+                filename = f"{proj_name}_Compliance_Assessment_Report.pdf"
+                return StreamingResponse(
+                    pdf_buf,
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                )
+            except Exception as exc:
+                logger.error("[Export] Compliance PDF generation failed: %s", exc, exc_info=True)
+                raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"PDF generation failed: {exc}")
+
+        elif artifact_type in (ArtifactType.SQL_SCHEMA.value, "sql_schema", "database_schema", "database_design"):
+            from .pdf_generator import generate_database_pdf
+            try:
+                pdf_buf = generate_database_pdf(projectId, db)
+                filename = f"{proj_name}_Database_Schema_Design.pdf"
+                return StreamingResponse(
+                    pdf_buf,
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                )
+            except Exception as exc:
+                logger.error("[Export] Database Schema PDF generation failed: %s", exc, exc_info=True)
+                raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"PDF generation failed: {exc}")
+
+    q = db.query(GeneratedArtifact)
+    if projectId:
+        q = q.filter(GeneratedArtifact.project_id == projectId)
+    if artifact_type:
+        q = q.filter(GeneratedArtifact.artifact_type == artifact_type)
+    art = q.order_by(GeneratedArtifact.created_at.desc()).first()
+    if not art:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Artifact not found")
 
     ext = ".sql" if art.artifact_type == ArtifactType.SQL_SCHEMA.value else f".{format}"
     filename = f"{art.artifact_type}_{art.id}{ext}"
@@ -1660,37 +1702,38 @@ def test_provider(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    _get_project_or_404(db, payload.project_id)
+    raw_key = payload.api_key
+    base_url = payload.base_url
+    model = payload.model
+    api_version = payload.api_version
 
-    config = (
-        db.query(ProviderConfiguration)
-        .filter(
-            ProviderConfiguration.project_id == payload.project_id,
-            ProviderConfiguration.provider_name == payload.provider_name,
+    if payload.project_id:
+        _get_project_or_404(db, payload.project_id)
+        config = (
+            db.query(ProviderConfiguration)
+            .filter(
+                ProviderConfiguration.project_id == payload.project_id,
+                ProviderConfiguration.provider_name == payload.provider_name,
+            )
+            .first()
         )
-        .first()
-    )
-
-    if not config:
-        return {
-            "provider_name": payload.provider_name,
-            "reachable": False,
-            "latency_ms": 0,
-            "model_tested": "n/a",
-            "message": "No configuration saved for this provider. Please fill in details and Save first.",
-        }
-
-    raw_key: str | None = None
-    if config.encrypted_key:
-        from .agents.llm_service import _decrypt_provider_key
-        raw_key = _decrypt_provider_key(config.encrypted_key)
+        if config:
+            if not raw_key and config.encrypted_key:
+                from .agents.llm_service import _decrypt_provider_key
+                raw_key = _decrypt_provider_key(config.encrypted_key)
+            if not base_url:
+                base_url = config.base_url
+            if not model:
+                model = config.model
+            if not api_version:
+                api_version = config.api_version
 
     result = ai_service.test_provider(
         payload.provider_name,
         raw_key,
-        base_url=config.base_url,
-        model=config.model,
-        api_version=config.api_version,
+        base_url=base_url,
+        model=model,
+        api_version=api_version,
     )
 
     return {
@@ -2589,23 +2632,67 @@ Run any agent by name. Supported agent_name values:
     _get_project_or_404(db, project_id)
 
     # Validate agent_name is a known agent
-    # Accept both snake_case (presentation_video_agent) and title case (Presentation video agent)
+    # Accept title case, snake_case, short aliases, or enum values
     from .agent_runner import PIPELINE
     from .models import AgentName
     
-    # Normalize to title case format if snake_case is passed
+    AGENT_ALIASES: dict[str, str] = {
+        "compliance_agent": "Compliance Architect Agent",
+        "compliance": "Compliance Architect Agent",
+        "compliance_architect": "Compliance Architect Agent",
+        "compliance_architect_agent": "Compliance Architect Agent",
+        "security_agent": "Security Architect Agent",
+        "security": "Security Architect Agent",
+        "security_architect": "Security Architect Agent",
+        "security_architect_agent": "Security Architect Agent",
+        "database_agent": "Database Design Agent",
+        "database_design_agent": "Database Design Agent",
+        "database": "Database Design Agent",
+        "requirement_agent": "Requirement Agent",
+        "requirements_agent": "Requirement Agent",
+        "requirements": "Requirement Agent",
+        "business_analyst_agent": "Business Analyst Agent",
+        "ba_agent": "Business Analyst Agent",
+        "ba": "Business Analyst Agent",
+        "solution_architect_agent": "Solution Architect Agent",
+        "architecture_agent": "Solution Architect Agent",
+        "architecture": "Solution Architect Agent",
+        "uiux_agent": "UI/UX Design Agent",
+        "uiux_design_agent": "UI/UX Design Agent",
+        "uiux": "UI/UX Design Agent",
+        "presentation_video_agent": "Presentation video agent",
+        "presentation_agent": "Presentation video agent",
+        "presentation": "Presentation video agent",
+        "frontend_agent": "Frontend Agent",
+        "frontend": "Frontend Agent",
+        "backend_agent": "Backend Agent",
+        "backend": "Backend Agent",
+        "testing_agent": "Testing Agent",
+        "testing": "Testing Agent",
+        "documentation_agent": "Documentation Agent",
+        "documentation": "Documentation Agent",
+        "dev_studio": "Development Studio",
+        "development_studio": "Development Studio",
+    }
+
     normalized_name = agent_name
     if agent_name not in PIPELINE:
-        # Try converting snake_case to title case (e.g., presentation_video_agent -> Presentation video agent)
-        try:
-            # Look for matching AgentName enum value
+        key_lower = agent_name.lower().strip()
+        if key_lower in AGENT_ALIASES:
+            normalized_name = AGENT_ALIASES[key_lower]
+        else:
+            # Fallback: check matching AgentName enum values or fuzzy substring match
             for agent_enum in AgentName:
-                snake_case_name = agent_enum.value.lower().replace(" ", "_")
-                if snake_case_name == agent_name:
+                if agent_enum.value.lower().replace(" ", "_") == key_lower:
                     normalized_name = agent_enum.value
                     break
-        except Exception:
-            pass
+            if normalized_name not in PIPELINE:
+                clean_input = key_lower.replace("_", " ").replace("agent", "").strip()
+                for p in PIPELINE:
+                    clean_p = p.lower().replace("agent", "").strip()
+                    if clean_input and (clean_input in clean_p or clean_p in clean_input):
+                        normalized_name = p
+                        break
     
     if normalized_name not in PIPELINE:
         raise HTTPException(

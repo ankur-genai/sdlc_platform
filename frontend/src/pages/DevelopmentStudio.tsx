@@ -20,6 +20,9 @@ import {
   CheckCircle,
   MessageSquare,
   Download,
+  Copy,
+  Check,
+  RotateCcw,
 } from 'lucide-react';
 import { Card, StatusBadge, ProgressBar } from '../components/ui/Card';
 import { apiRequest } from '../lib/api';
@@ -53,7 +56,6 @@ interface AgentLogEntry {
   status: 'running' | 'completed' | 'failed' | 'pending';
 }
 
-// Matches GET /projects/{id}/agent-runs (backend/fastapi_agents/main_extension.py)
 interface AgentRunStatus {
   id: number;
   project_id: number;
@@ -78,11 +80,6 @@ const bottomStatIcons: Record<string, React.ElementType> = {
   'Testing Agent': TestTube,
 };
 
-// Generated `path` is inconsistent about whether it already includes the
-// filename (e.g. "src/components/Foo.tsx") or is just the containing
-// directory (e.g. "src/components", filename only in `name`) — seen in
-// practice with smaller/rate-limited models. Combine defensively so two
-// files in the same directory never collide under one identity.
 function resolveFullPath(path: string, name: string): string {
   const cleanPath = (path || '').replace(/^\/+|\/+$/g, '');
   const cleanName = (name || '').replace(/^\/+|\/+$/g, '');
@@ -97,9 +94,6 @@ function buildFileTree(files: { path: string }[]): FileNode {
     let current = root;
     let accPath = '';
     parts.forEach((part, idx) => {
-      // No leading slash — must match the plain "a/b/c" paths allFiles uses
-      // (via resolveFullPath) so clicking a tree node's path actually finds
-      // its content.
       accPath = accPath ? `${accPath}/${part}` : part;
       const isFile = idx === parts.length - 1;
       current.children = current.children || [];
@@ -118,7 +112,9 @@ function formatElapsed(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
-  return `${h}h ${m}m ${s}s`;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }
 
 function FileTree({ node, depth = 0, selectedFile, onSelect }: { node: FileNode; depth?: number; selectedFile: string | null; onSelect: (path: string) => void }) {
@@ -129,7 +125,7 @@ function FileTree({ node, depth = 0, selectedFile, onSelect }: { node: FileNode;
       <div>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center gap-1 w-full text-left text-xs py-1 hover:bg-dark-cardHover rounded px-1 transition-colors"
+          className="flex items-center gap-1 w-full text-left text-xs py-1 hover:bg-dark-cardHover rounded px-1 transition-colors cursor-pointer"
           style={{ paddingLeft: depth * 12 }}
         >
           <ChevronRight className={`h-3 w-3 text-text-muted transition-transform ${isOpen ? 'rotate-90' : ''}`} />
@@ -162,7 +158,7 @@ function FileTree({ node, depth = 0, selectedFile, onSelect }: { node: FileNode;
   return (
     <button
       onClick={() => onSelect(node.path)}
-      className={`flex items-center gap-1 w-full text-left text-xs py-1 hover:bg-dark-cardHover rounded px-1 transition-colors ${
+      className={`flex items-center gap-1 w-full text-left text-xs py-1 hover:bg-dark-cardHover rounded px-1 transition-colors cursor-pointer ${
         selectedFile === node.path ? 'bg-ey-yellow/10 text-ey-yellow' : ''
       }`}
       style={{ paddingLeft: (depth + 1) * 12 }}
@@ -173,11 +169,155 @@ function FileTree({ node, depth = 0, selectedFile, onSelect }: { node: FileNode;
   );
 }
 
+interface LiveCodeEditorProps {
+  filePath: string | null;
+  content: string;
+  language: string;
+  isGenerating: boolean;
+  isEdited: boolean;
+  onChange: (newContent: string) => void;
+  onReset: () => void;
+}
+
+function LiveCodeEditor({
+  filePath,
+  content,
+  language,
+  isGenerating,
+  isEdited,
+  onChange,
+  onReset,
+}: LiveCodeEditorProps) {
+  const [copied, setCopied] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lineNumbersRef = useRef<HTMLDivElement>(null);
+
+  const handleScroll = () => {
+    if (textareaRef.current && lineNumbersRef.current) {
+      lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const target = e.currentTarget;
+      const start = target.selectionStart;
+      const end = target.selectionEnd;
+      const val = target.value;
+      const newValue = val.substring(0, start) + '  ' + val.substring(end);
+      onChange(newValue);
+
+      setTimeout(() => {
+        if (target) {
+          target.selectionStart = target.selectionEnd = start + 2;
+        }
+      }, 0);
+    }
+  };
+
+  const lines = useMemo(() => (content || '').split('\n'), [content]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
+
+  return (
+    <div className="h-[450px] overflow-hidden rounded-lg border border-dark-border bg-dark-bg flex flex-col">
+      {/* Editor Top Bar */}
+      <div className="flex items-center justify-between border-b border-dark-border bg-dark-card px-3 py-2">
+        <div className="flex items-center gap-2 truncate pr-2">
+          <FileCode className="h-3.5 w-3.5 text-text-muted flex-shrink-0" />
+          <span className="text-xs font-semibold text-text-primary truncate">
+            {filePath ? filePath : 'No file selected'}
+          </span>
+          {isEdited && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-ey-yellow/15 text-ey-yellow border border-ey-yellow/30 flex-shrink-0">
+              Edited
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <span className="text-[10px] text-text-muted uppercase font-mono">{language || 'text'}</span>
+          {isEdited && (
+            <button
+              onClick={onReset}
+              className="flex items-center gap-1 text-[10px] text-text-muted hover:text-status-warning transition-colors cursor-pointer"
+              title="Reset manual edits to original generated content"
+            >
+              <RotateCcw className="h-3 w-3" />
+              <span>Reset</span>
+            </button>
+          )}
+          <button
+            onClick={handleCopy}
+            disabled={!content}
+            className="flex items-center gap-1 text-[10px] text-text-muted hover:text-ey-yellow transition-colors disabled:opacity-40 cursor-pointer"
+          >
+            {copied ? <Check className="h-3 w-3 text-status-success" /> : <Copy className="h-3 w-3" />}
+            <span>{copied ? 'Copied' : 'Copy'}</span>
+          </button>
+          <StatusBadge status={isGenerating ? 'running' : 'success'}>
+            <Sparkles className="mr-1 h-2.5 w-2.5" />
+            {isGenerating ? 'Generating' : 'Generated'}
+          </StatusBadge>
+        </div>
+      </div>
+
+      {/* Editor Main Canvas */}
+      <div className="relative flex-1 flex overflow-hidden font-mono text-xs bg-[#0A0A0E]">
+        {/* Line Numbers Column */}
+        <div
+          ref={lineNumbersRef}
+          className="w-10 flex-shrink-0 bg-dark-bg/60 border-r border-dark-border/60 py-3 pr-2 select-none overflow-hidden text-right text-dark-border-light font-mono text-[11px] leading-relaxed"
+        >
+          {lines.map((_, idx) => (
+            <div key={idx}>{idx + 1}</div>
+          ))}
+        </div>
+
+        {/* Text Area Code Editor */}
+        <textarea
+          ref={textareaRef}
+          value={content}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onScroll={handleScroll}
+          spellCheck={false}
+          autoCapitalize="off"
+          autoComplete="off"
+          autoCorrect="off"
+          placeholder={filePath ? 'Click here to edit generated code...' : 'Select a file from Project Structure to view or edit code.'}
+          className="w-full h-full p-3 bg-transparent text-text-primary font-mono text-xs leading-relaxed resize-none focus:outline-none scrollbar-thin scrollbar-thumb-dark-border selection:bg-ey-yellow/20 selection:text-white"
+        />
+      </div>
+
+      {/* Editor Footer */}
+      <div className="flex items-center justify-between border-t border-dark-border bg-dark-card px-3 py-1.5 text-[11px] text-text-muted">
+        <div className="flex items-center gap-2">
+          <span className="flex h-1.5 w-1.5 rounded-full bg-status-success" />
+          <span className="hidden sm:inline">Live Editor Active — manual edits remain in workspace state</span>
+          <span className="sm:hidden">Live Editor Active</span>
+        </div>
+        <div>
+          <span>{lines.length} lines</span>
+          <span> | {content.length} chars</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DevelopmentStudio() {
   const [projectId] = useState(() => getSelectedProjectId());
   const { getGeneratedCode, loading: artifactsLoading, reload: reloadArtifacts } = useUnifiedArtifacts(projectId);
 
   const [streamedFiles, setStreamedFiles] = useState<Record<string, StreamedFile>>({});
+  const [editedFiles, setEditedFiles] = useState<Record<string, string>>({});
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [agentLog, setAgentLog] = useState<AgentLogEntry[]>([]);
   const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
@@ -212,9 +352,6 @@ export function DevelopmentStudio() {
       setAgentLog((prev) => [{ id: logIdRef.current, ...entry }, ...prev].slice(0, 60));
     };
 
-    // Real backend payload field names are snake_case
-    // (backend/fastapi_agents/ws_manager.py / agent_runner.py) — e.g.
-    // {"agent_name": "Frontend Agent", "run_id": 12} for agent_started.
     switch (event.type) {
       case 'agent_started': {
         const agentName = String(event.data.agent_name || 'Agent');
@@ -248,12 +385,18 @@ export function DevelopmentStudio() {
           const previousLines = isFirst || !prev[path] ? [] : prev[path].lines;
           return {
             ...prev,
-            [path]: { path, language, agentType, complete: isLast, lines: [...previousLines, ...chunk.split('\n')] },
+            [path]: {
+              path,
+              language,
+              agentType,
+              lines: (previousLines.join('\n') + chunk).split('\n'),
+              complete: isLast,
+            },
           };
         });
 
         if (isLast) {
-          pushLog({ agent: agentType.toUpperCase(), action: `Completed ${path.split('/').pop()}`, time: nowStr, status: 'completed' });
+          pushLog({ agent: agentType.toUpperCase() || 'CODE', action: `Completed ${path.split('/').pop()}`, time: nowStr, status: 'completed' });
         }
         break;
       }
@@ -286,14 +429,29 @@ export function DevelopmentStudio() {
 
   const fileTree = useMemo(() => buildFileTree(allFiles), [allFiles]);
 
-  // Only the persisted frontend/backend artifacts carry file content (the
-  // live-streamed entries don't), so the downloadable set is built from those.
+  // Downloadable ZIP contains frontend, backend, streamed, AND user-edited files!
   const downloadableFiles = useMemo(() => {
     const map = new Map<string, string>();
     (frontendCode?.files || []).forEach((f) => { const p = resolveFullPath(f.path, f.name); if (f.content != null) map.set(p, f.content); });
     (backendCode?.files || []).forEach((f) => { const p = resolveFullPath(f.path, f.name); if (f.content != null) map.set(p, f.content); });
+    Object.values(streamedFiles).forEach((f) => { map.set(f.path, f.lines.join('\n')); });
+    Object.entries(editedFiles).forEach(([path, content]) => { map.set(path, content); });
     return Array.from(map.entries()).map(([path, content]) => ({ path, content }));
-  }, [frontendCode, backendCode]);
+  }, [frontendCode, backendCode, streamedFiles, editedFiles]);
+
+  // Live preview files updated with user edits
+  const livePreviewFiles = useMemo(() => {
+    return (frontendCode?.files || []).map((f) => {
+      const p = resolveFullPath(f.path, f.name);
+      const content = editedFiles[p] !== undefined ? editedFiles[p] : (f.content || '');
+      return {
+        path: p,
+        name: f.name,
+        content,
+        language: f.language,
+      };
+    });
+  }, [frontendCode, editedFiles]);
 
   const handleDownloadCode = useCallback(() => {
     if (downloadableFiles.length === 0) return;
@@ -308,21 +466,43 @@ export function DevelopmentStudio() {
     URL.revokeObjectURL(url);
   }, [downloadableFiles, projectId]);
 
+  // Selected file original & current content
   const selectedStreamed = selectedFile ? streamedFiles[selectedFile] : undefined;
   const selectedStatic = selectedFile ? allFiles.find((f) => f.path === selectedFile) : undefined;
-  const selectedContent = selectedStreamed ? selectedStreamed.lines.join('\n') : selectedStatic?.content || '';
+  const originalContent = selectedStreamed ? selectedStreamed.lines.join('\n') : selectedStatic?.content || '';
+  const currentContent = selectedFile && editedFiles[selectedFile] !== undefined ? editedFiles[selectedFile] : originalContent;
+  const isEdited = Boolean(selectedFile && editedFiles[selectedFile] !== undefined && editedFiles[selectedFile] !== originalContent);
+
   const selectedLanguage = selectedStreamed?.language || selectedStatic?.language || '';
   const selectedAgentType = selectedStreamed?.agentType
     || (frontendCode?.files?.some((f) => resolveFullPath(f.path, f.name) === selectedFile) ? 'frontend' : backendCode?.files?.some((f) => resolveFullPath(f.path, f.name) === selectedFile) ? 'backend' : '');
 
+  const handleCodeChange = (newContent: string) => {
+    if (!selectedFile) return;
+    setEditedFiles((prev) => ({
+      ...prev,
+      [selectedFile]: newContent,
+    }));
+  };
+
+  const handleResetCode = () => {
+    if (!selectedFile) return;
+    setEditedFiles((prev) => {
+      const copy = { ...prev };
+      delete copy[selectedFile];
+      return copy;
+    });
+  };
+
   const totalLines = useMemo(() => {
     let sum = 0;
     const counted = new Set<string>();
-    Object.values(streamedFiles).forEach((f) => { sum += f.lines.length; counted.add(f.path); });
-    (frontendCode?.files || []).forEach((f) => { if (!counted.has(resolveFullPath(f.path, f.name))) sum += (f.content || '').split('\n').length; });
-    (backendCode?.files || []).forEach((f) => { if (!counted.has(resolveFullPath(f.path, f.name))) sum += (f.content || '').split('\n').length; });
+    downloadableFiles.forEach((f) => {
+      sum += (f.content || '').split('\n').length;
+      counted.add(f.path);
+    });
     return sum;
-  }, [streamedFiles, frontendCode, backendCode]);
+  }, [downloadableFiles]);
 
   const bottomStages = (runs || []).filter((r) => Object.prototype.hasOwnProperty.call(bottomStatIcons, r.agent_name));
   const completedCount = (runs || []).filter((r) => r.status === 'completed').length;
@@ -337,7 +517,7 @@ export function DevelopmentStudio() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Development Studio</h1>
-          <p className="mt-1 text-sm text-text-muted">Unified build monitor — live code generation across Frontend and Backend agents</p>
+          <p className="mt-1 text-sm text-text-muted">Unified build monitor — live code generation &amp; interactive editor across Frontend and Backend agents</p>
         </div>
         <div className="flex items-center gap-4">
           {activeAgentName && (
@@ -349,7 +529,7 @@ export function DevelopmentStudio() {
           <button
             onClick={handleDownloadCode}
             disabled={downloadableFiles.length === 0}
-            className="flex items-center gap-2 rounded-lg border border-dark-border px-3 py-1.5 text-xs text-text-primary transition-colors hover:border-ey-yellow hover:text-ey-yellow disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex items-center gap-2 rounded-lg border border-dark-border px-3 py-1.5 text-xs font-semibold text-text-primary transition-colors hover:border-ey-yellow hover:text-ey-yellow disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
             title={downloadableFiles.length === 0 ? 'No generated code to download yet' : `Download ${downloadableFiles.length} file(s) as a ZIP`}
           >
             <Download className="h-4 w-4" />
@@ -423,7 +603,7 @@ export function DevelopmentStudio() {
               </div>
             </Card>
 
-            {/* Column 2: Live Code Stream */}
+            {/* Column 2: Live Code Stream Editor */}
             <Card className="lg:col-span-2">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
@@ -431,51 +611,20 @@ export function DevelopmentStudio() {
                   <h3 className="section-title mb-0">Live Code Stream</h3>
                 </div>
               </div>
-              <div className="h-[450px] overflow-hidden rounded-lg border border-dark-border bg-dark-bg">
-                <div className="flex items-center justify-between border-b border-dark-border bg-dark-card px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <FileCode className="h-3 w-3 text-text-muted" />
-                    <span className="text-xs text-text-primary">{selectedFile ? selectedFile.split('/').pop() : 'No file selected'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-text-muted">{selectedLanguage || '—'}</span>
-                    <StatusBadge status={selectedStreamed && !selectedStreamed.complete ? 'running' : 'success'}>
-                      <Sparkles className="mr-1 h-2 w-2" />
-                      {selectedStreamed && !selectedStreamed.complete ? 'Generating' : 'Generated'}
-                    </StatusBadge>
-                  </div>
-                </div>
-                <div className="font-mono text-xs p-4 overflow-auto h-[calc(100%-36px)]">
-                  {selectedContent ? (
-                    <pre className="text-text-secondary">
-                      {selectedContent.split('\n').map((line, index) => (
-                        <motion.div
-                          key={`${selectedFile}-${index}`}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: Math.min(index * 0.01, 0.6) }}
-                          className="flex"
-                        >
-                          <span className="w-8 text-right pr-4 text-dark-border-light select-none">{index + 1}</span>
-                          <span className={
-                            line.includes('import') ? 'text-status-info' :
-                            line.includes('const') || line.includes('function') || line.includes('def ') || line.includes('class ') ? 'text-ey-yellow' :
-                            line.includes('return') ? 'text-status-success' :
-                            'text-text-secondary'
-                          }>
-                            {line}
-                          </span>
-                        </motion.div>
-                      ))}
-                    </pre>
-                  ) : (
-                    <p className="text-text-muted">Waiting for code generation — select a file once one appears in Project Structure.</p>
-                  )}
-                </div>
-              </div>
+
+              <LiveCodeEditor
+                filePath={selectedFile}
+                content={currentContent}
+                language={selectedLanguage}
+                isGenerating={Boolean(selectedStreamed && !selectedStreamed.complete)}
+                isEdited={isEdited}
+                onChange={handleCodeChange}
+                onReset={handleResetCode}
+              />
+
               <div className="mt-3 flex items-center justify-between text-xs text-text-muted">
                 <span>{selectedAgentType ? `Generated by ${selectedAgentType === 'frontend' ? 'Frontend Agent' : 'Backend Agent'}` : ''}</span>
-                <span>{selectedContent ? `${selectedContent.split('\n').length} lines` : ''}{selectedLanguage ? ` | ${selectedLanguage}` : ''}</span>
+                <span>{currentContent ? `${currentContent.split('\n').length} lines` : ''}{selectedLanguage ? ` | ${selectedLanguage}` : ''}</span>
               </div>
             </Card>
 
@@ -519,8 +668,6 @@ export function DevelopmentStudio() {
                 )}
               </div>
 
-              {/* Runtime — the backend doesn't track tokens/cost per run,
-                  so this only shows what's actually knowable. */}
               <div className="mt-4 pt-4 border-t border-dark-border">
                 <p className="text-xs text-text-muted mb-2">Runtime</p>
                 <p className="text-sm text-text-primary">{formatElapsed(elapsedSeconds)}</p>
@@ -528,7 +675,7 @@ export function DevelopmentStudio() {
             </Card>
           </div>
 
-          {/* Code Assistant — chat to change the generated code through queries. */}
+          {/* Code Assistant */}
           <Card>
             <div className="flex items-center gap-2 mb-4">
               <MessageSquare className="h-4 w-4 text-ey-yellow" />
@@ -543,9 +690,7 @@ export function DevelopmentStudio() {
             />
           </Card>
 
-          {/* Preview — the frontend renders a real in-browser compiled preview
-              (see LivePreviewFrame); the backend shows a validated status card
-              with its endpoints. Each appears as soon as its own files exist. */}
+          {/* Application Preview */}
           {((frontendCode?.files?.length || 0) > 0 || (backendCode?.files?.length || 0) > 0) && (
             <div className="grid gap-4 lg:grid-cols-2">
               {(frontendCode?.files?.length || 0) > 0 && (
@@ -554,7 +699,7 @@ export function DevelopmentStudio() {
                     <Eye className="h-4 w-4 text-ey-yellow" />
                     <h3 className="section-title mb-0">Application Preview</h3>
                   </div>
-                  <LivePreviewFrame files={frontendCode?.files || []} />
+                  <LivePreviewFrame files={livePreviewFiles} />
                 </Card>
               )}
               {(backendCode?.files?.length || 0) > 0 && (
@@ -589,7 +734,7 @@ export function DevelopmentStudio() {
             </div>
           )}
 
-          {/* Bottom Stats — pipeline stages most relevant to this build */}
+          {/* Bottom Stats */}
           {bottomStages.length > 0 && (
             <div className="grid gap-4 md:grid-cols-4">
               {bottomStages.map((run) => {
