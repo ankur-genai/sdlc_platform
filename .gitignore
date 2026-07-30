@@ -41,3 +41,10 @@ storage/
 .env.*
 !.env.example
 
+# Scratch and Temporary Artifacts
+scratch/
+backend/scratch/
+~$*
+*.tmp
+
+
