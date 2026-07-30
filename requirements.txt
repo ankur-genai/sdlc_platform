@@ -12,14 +12,15 @@
 # =============================================================================
 
 # ── Core Web Framework (pure-Python — exact pins) ────────────────────────────
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
+# Pinned to versions verified to work with Python 3.14.
+# (0.115.0 / 0.30.6 were the original pins but predate Python 3.14 wheels.)
+fastapi==0.139.0
+uvicorn[standard]==0.50.0
 python-dotenv==1.0.1
 python-multipart==0.0.9
-starlette>=0.37.0             # transitive; fastapi pins this, listed for clarity
 
 # ── Database ──────────────────────────────────────────────────────────────────
-sqlalchemy==2.0.35
+sqlalchemy==2.0.51
 # psycopg2-binary has C extensions; >=2.9.9 allows pip to pick a wheel built
 # for the installed Python version (e.g. 2.9.12 for Python 3.14).
 psycopg2-binary>=2.9.9
@@ -30,11 +31,11 @@ psycopg2-binary>=2.9.9
 pydantic>=2.9.2
 
 # ── Auth & Security ───────────────────────────────────────────────────────────
-PyJWT==2.9.0
+PyJWT==2.13.0
 passlib[bcrypt]==1.7.4
 # cryptography has Rust extensions; >=43.0.1 allows compatible wheel selection.
 cryptography>=43.0.1
-email-validator==2.2.0
+email-validator==2.3.0
 
 # ── HTTP Client (pure-Python) ─────────────────────────────────────────────────
 requests>=2.31.0
