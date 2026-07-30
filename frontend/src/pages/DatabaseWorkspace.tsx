@@ -6,6 +6,7 @@ import {
   Link2,
   Key,
   FileCode2,
+  FileCode,
   RefreshCw,
   CheckCircle2,
   Clock,
@@ -328,68 +329,33 @@ export function DatabaseWorkspace() {
 
             {exportDropdownOpen && (
               <div 
-                className="absolute right-0 mt-2 w-64 bg-[#1A1A24] border border-dark-border rounded-xl shadow-2xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+                className="absolute right-0 mt-2 w-56 bg-[#1A1A24] border border-dark-border rounded-xl shadow-2xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
                 onMouseLeave={() => setExportDropdownOpen(false)}
               >
-                {/* Fully Functional PDF Export */}
+                {/* Active PDF Export Option */}
                 <button
-                  onClick={handleExportPdf}
+                  onClick={() => { setExportDropdownOpen(false); handleExportPdf(); }}
                   disabled={exportingPdf}
-                  className="w-full text-left px-4 py-2.5 text-xs text-text-primary hover:bg-dark-surface flex items-center gap-2 font-semibold group cursor-pointer"
+                  className="w-full text-left px-4 py-2 text-xs text-text-primary hover:bg-dark-surface flex items-center gap-2 font-semibold group cursor-pointer"
                 >
                   <FileTextIcon className="h-4 w-4 text-ey-yellow" />
-                  <div>
-                    <div className="font-semibold text-text-primary">Export as PDF</div>
-                    <div className="text-[10px] text-text-muted">Complete Database Schema Specification</div>
-                  </div>
+                  <span>Export as PDF</span>
                 </button>
 
                 <div className="border-t border-dark-border/40 my-1" />
-                <div className="px-3 py-1 text-[9px] uppercase font-bold text-text-muted">UNDER DEVELOPMENT</div>
+                <div className="px-3 py-1 text-[9px] uppercase font-bold text-text-muted">COMING SOON</div>
 
-                {/* Under Development Export Options */}
-                <button
-                  onClick={() => handleUnderDevExport('Word (DOCX)')}
-                  className="w-full text-left px-4 py-2 text-xs text-text-muted hover:bg-dark-surface/50 flex items-center justify-between opacity-80 cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <File className="h-3.5 w-3.5 text-text-muted" />
-                    <span>Export Word (DOCX)</span>
-                  </div>
-                  <span className="text-[9px] bg-status-warning/15 text-status-warning border border-status-warning/30 px-1.5 py-0.5 rounded font-mono font-bold">Under Dev</span>
+                <button disabled className="w-full text-left px-4 py-1.5 text-xs text-text-muted cursor-not-allowed opacity-50 flex items-center gap-2">
+                  <File className="h-3.5 w-3.5" /> DOCX (Coming Soon)
                 </button>
-
-                <button
-                  onClick={() => handleUnderDevExport('Excel Data Dictionary (XLSX)')}
-                  className="w-full text-left px-4 py-2 text-xs text-text-muted hover:bg-dark-surface/50 flex items-center justify-between opacity-80 cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <FileType className="h-3.5 w-3.5 text-text-muted" />
-                    <span>Export Excel (XLSX)</span>
-                  </div>
-                  <span className="text-[9px] bg-status-warning/15 text-status-warning border border-status-warning/30 px-1.5 py-0.5 rounded font-mono font-bold">Under Dev</span>
+                <button disabled className="w-full text-left px-4 py-1.5 text-xs text-text-muted cursor-not-allowed opacity-50 flex items-center gap-2">
+                  <FileType className="h-3.5 w-3.5" /> Markdown (Coming Soon)
                 </button>
-
-                <button
-                  onClick={() => handleUnderDevExport('SQL DDL Script (.sql)')}
-                  className="w-full text-left px-4 py-2 text-xs text-text-muted hover:bg-dark-surface/50 flex items-center justify-between opacity-80 cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <FileCode2 className="h-3.5 w-3.5 text-text-muted" />
-                    <span>Export SQL Script (.sql)</span>
-                  </div>
-                  <span className="text-[9px] bg-status-warning/15 text-status-warning border border-status-warning/30 px-1.5 py-0.5 rounded font-mono font-bold">Under Dev</span>
+                <button disabled className="w-full text-left px-4 py-1.5 text-xs text-text-muted cursor-not-allowed opacity-50 flex items-center gap-2">
+                  <FileCode className="h-3.5 w-3.5" /> HTML (Coming Soon)
                 </button>
-
-                <button
-                  onClick={() => handleUnderDevExport('JSON Schema (.json)')}
-                  className="w-full text-left px-4 py-2 text-xs text-text-muted hover:bg-dark-surface/50 flex items-center justify-between opacity-80 cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <FileJson className="h-3.5 w-3.5 text-text-muted" />
-                    <span>Export JSON Schema</span>
-                  </div>
-                  <span className="text-[9px] bg-status-warning/15 text-status-warning border border-status-warning/30 px-1.5 py-0.5 rounded font-mono font-bold">Under Dev</span>
+                <button disabled className="w-full text-left px-4 py-1.5 text-xs text-text-muted cursor-not-allowed opacity-50 flex items-center gap-2">
+                  <FileJson className="h-3.5 w-3.5" /> JSON (Coming Soon)
                 </button>
               </div>
             )}
