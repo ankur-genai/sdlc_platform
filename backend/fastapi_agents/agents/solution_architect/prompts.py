@@ -37,7 +37,7 @@ Return exactly this JSON shape (types shown, fill every field with real content 
   "architecture_summary": "string",
   "pattern": "string",
   "microservices": [{"name": "string", "responsibility": "string", "technology": "string", "port": 8001}],
-  "components": [{"name": "string", "type": "frontend|backend|database|queue|cache|gateway", "technology": "string"}],
+  "components": [{"name": "string", "type": "frontend|backend|database|queue|cache|gateway", "technology": "string", "responsibility": "string — concise description of what this component does"}],
   "diagrams": [{"type": "system_context|container|workflow|sequence", "content": "graph TD\\n  User-->Gateway\\n  Gateway-->Service"}],
   "tech_stack": {"frontend": "string", "backend": "string", "database": "string"},
   "architecture_decisions": [{"decision": "string", "rationale": "string", "alternatives_considered": "string", "consequences": "string"}],

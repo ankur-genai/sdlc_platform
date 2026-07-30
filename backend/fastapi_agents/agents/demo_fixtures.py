@@ -39,6 +39,7 @@ def classify_domain(db, project_id: int) -> str:
             text_content += f" {req_art.content[:2000].lower()}"
 
         domains = {
+            "cloud_storage": ["storage", "s3", "blob", "bucket", "cloud storage", "vault", "drive", "archival", "chunk"],
             "healthcare": ["hospital", "clinic", "health", "patient", "medical", "doctor",
                            "ehr", "emr", "prescription", "pharmacy", "care", "diagnosis", "nurse"],
             "banking": ["bank", "banking", "finance", "payment", "card", "billing",
@@ -658,15 +659,20 @@ def get_architecture(proj_name_or_db: Any, project_id: int = None) -> dict:
     )
     domain = classify_domain(db, project_id) if db else "general"
 
+    diagrams_cloud_storage = (
+        "+-----------------+     +-----------------+     +-------------------+\n"
+        "| Storage Console | --> | Storage Gateway | --> | Transfer Engine   |\n"
+        "+-----------------+     +-----------------+     +-------------------+"
+    )
     diagrams_healthcare = (
         "+------------+     +--------------+     +-----------------+\n"
         "| React Web  | --> | Kong Gateway | --> | Patient Service |\n"
         "+------------+     +--------------+     +-----------------+"
     )
     diagrams_banking = (
-        "+-----------+     +-----------------+     +-----------------+\n"
-        "| SPA Shell | --> | Express Monolith| --> | PostgreSQL DB   |\n"
-        "+-----------+     +-----------------+     +-----------------+"
+        "+-----------------+     +-----------------+     +-------------------+\n"
+        "| Banking Console | --> | Secure Gateway  | --> | Ledger Engine     |\n"
+        "+-----------------+     +-----------------+     +-------------------+"
     )
     diagrams_ecommerce = (
         "+-------------+     +-----------------+     +------------------+\n"
@@ -679,40 +685,49 @@ def get_architecture(proj_name_or_db: Any, project_id: int = None) -> dict:
         "+-------------+     +-------------------+     +------------------+"
     )
 
-    if domain == "healthcare":
+    if domain == "cloud_storage":
         return {
-            "architecture_summary": "Hospital Management System - Layered SOA with HIPAA compliance focus.",
-            "pattern": "Layered Microservices / Event-Driven Architecture",
-            "microservices": ["Patient Ingest Service", "Clinical Appt Scheduler", "Billing Gateway", "Notification Router"],
-            "components": ["Web Front-end", "Kong API Gateway", "Kafka Event Bus", "Secure Database Layer"],
-            "tech_stack": {"Frontend": "React + TypeScript", "Backend": "FastAPI (Python)", "Database": "PostgreSQL"},
-            "diagrams": [diagrams_healthcare],
+            "architecture_summary": f"{proj_name} — High-throughput distributed object storage architecture with decoupled file metadata indexing.",
+            "pattern": "Distributed Microservices & Object Storage Topology",
+            "microservices": ["Storage API Gateway", "Metadata Index Service", "Chunk Transfer Engine"],
+            "components": ["Storage Web Console", "Storage API Gateway", "Metadata Service", "Transfer Engine", "PostgreSQL Metadata DB", "Object Storage Engine"],
+            "tech_stack": {"Frontend": "React 18 + Vite", "Backend": "FastAPI (Python 3.12) / Go", "Database": "PostgreSQL 15 + S3 Storage"},
+            "diagrams": [diagrams_cloud_storage],
         }
-    elif domain in ("banking", "erp"):
+    elif domain == "banking":
         return {
-            "architecture_summary": "Banking Portal - Modular monolith. Auth, Account and Transaction concerns separated.",
-            "pattern": "Modular Monolith",
-            "microservices": ["Auth Module", "Account Module", "Transaction Module"],
-            "components": ["Express SPA shell", "Sequelize ORM layer", "PostgreSQL DB"],
-            "tech_stack": {"Frontend": "React + Vite", "Backend": "Express Node.js", "Database": "PostgreSQL"},
+            "architecture_summary": f"{proj_name} — Zero-trust financial portal architecture with double-entry journal ledger integrity.",
+            "pattern": "Zero-Trust Financial Microservices Architecture",
+            "microservices": ["Secure Auth Service", "Account Management API", "Ledger Transaction Engine"],
+            "components": ["Banking Web Console", "Secure Gateway WAF", "Auth & Identity Service", "Ledger Engine", "PostgreSQL Core Ledger DB", "HSM Key Vault"],
+            "tech_stack": {"Frontend": "React 18 + Vite", "Backend": "FastAPI (Python 3.12) / Java", "Database": "PostgreSQL 15 (Multi-AZ)"},
             "diagrams": [diagrams_banking],
         }
     elif domain == "ecommerce":
         return {
-            "architecture_summary": "E-commerce Platform - Scalable microservices for checkout concurrency.",
-            "pattern": "CQRS Microservices",
-            "microservices": ["Catalog Service", "Cart & Checkout Service", "Billing Hub"],
-            "components": ["Next.js SSR Frontend", "GraphQL Gateway", "PostgreSQL DB"],
-            "tech_stack": {"Frontend": "Next.js + Tailwind", "Backend": "NestJS (Node.js)", "Database": "PostgreSQL"},
+            "architecture_summary": f"{proj_name} — Scalable e-commerce platform architecture built for peak checkout concurrency.",
+            "pattern": "CQRS Event-Driven Microservices",
+            "microservices": ["Product Catalog Service", "Shopping Cart Service", "Checkout & Order Engine"],
+            "components": ["Storefront Next.js UI", "GraphQL Gateway", "Catalog Service", "Checkout Engine", "PostgreSQL Order DB", "Redis Cart Cache"],
+            "tech_stack": {"Frontend": "Next.js + Tailwind", "Backend": "FastAPI (Python 3.12) / NestJS", "Database": "PostgreSQL 15"},
             "diagrams": [diagrams_ecommerce],
+        }
+    elif domain == "healthcare":
+        return {
+            "architecture_summary": f"{proj_name} — Layered clinical healthcare architecture compliant with HIPAA privacy protocols.",
+            "pattern": "Layered Microservices / Event-Driven Architecture",
+            "microservices": ["Patient Ingest Service", "Clinical Appt Scheduler", "HIPAA Audit Service"],
+            "components": ["Clinical Web Console", "Kong API Gateway", "Kafka Event Bus", "Secure Database Layer"],
+            "tech_stack": {"Frontend": "React + TypeScript", "Backend": "FastAPI (Python)", "Database": "PostgreSQL"},
+            "diagrams": [diagrams_healthcare],
         }
     elif domain == "education":
         return {
-            "architecture_summary": "College ERP Architecture - Spring Cloud gateway integrating registry databases.",
+            "architecture_summary": f"{proj_name} — Academic portal architecture supporting student registry and course enrollment.",
             "pattern": "Service Oriented Architecture (SOA)",
             "microservices": ["Student Portal API", "Registry Scheduler", "Grading Engine"],
-            "components": ["Angular Frontend", "Spring Cloud Gateway", "Oracle DB"],
-            "tech_stack": {"Frontend": "Angular + RxJS", "Backend": "Java Spring Boot", "Database": "Oracle DB"},
+            "components": ["Angular Frontend", "Spring Cloud Gateway", "Registry DB"],
+            "tech_stack": {"Frontend": "Angular + RxJS", "Backend": "Java Spring Boot", "Database": "PostgreSQL"},
             "diagrams": [diagrams_education],
         }
     else:

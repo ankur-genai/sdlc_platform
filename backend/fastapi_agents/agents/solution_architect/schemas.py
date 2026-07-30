@@ -26,6 +26,7 @@ class Component(BaseModel):
     name: str = ""
     type: str = "backend"
     technology: str = ""
+    responsibility: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -35,6 +36,7 @@ class Component(BaseModel):
         v = dict(v)
         v.setdefault("name", _first_present(v, "name", "component", "service"))
         v.setdefault("technology", _first_present(v, "technology", "tech", "stack"))
+        v.setdefault("responsibility", _first_present(v, "responsibility", "description", "role", "purpose"))
         return v
 
 

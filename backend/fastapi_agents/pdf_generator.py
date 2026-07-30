@@ -9,11 +9,15 @@ Omits empty sections automatically from both TOC and body without leaving blank 
 
 from __future__ import annotations
 
+import base64
 import json
+import re
+import requests
 from datetime import datetime
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
+from PIL import Image as PILImage, ImageDraw, ImageFont
 from reportlab.lib.colors import HexColor
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import letter
@@ -21,6 +25,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.pdfgen import canvas
 from reportlab.platypus import (
     HRFlowable,
+    Image as RLImage,
     KeepTogether,
     PageBreak,
     Paragraph,
@@ -43,6 +48,8 @@ COLOR_TEXT_MUTED = HexColor("#64748B")    # Slate Muted Text
 COLOR_LIGHT_BG = HexColor("#F8FAFC")      # Soft Off-White Gray
 COLOR_BORDER = HexColor("#E2E8F0")        # Border Gray
 COLOR_WHITE = HexColor("#FFFFFF")
+COLOR_DARK_BG = HexColor("#14141E")
+COLOR_DARK_SURFACE = HexColor("#222230")
 
 # Badge Pill Colors
 COLOR_MUST = HexColor("#DC2626")          # Red
@@ -109,9 +116,8 @@ class EnterpriseNumberedCanvas(canvas.Canvas):
         doc_title = getattr(self, "_doc_title", "Software Requirements Specification")
         self.drawString(margin, page_height - 34, f"{doc_title}")
 
-        self.setFont("Helvetica", 8)
-        self.setFillColor(COLOR_TEXT_MUTED)
-        self.drawRightString(page_width - margin, page_height - 34, "System Requirements Specification (SRS)")
+        doc_subtitle = getattr(self, "_doc_subtitle", "System Requirements Specification (SRS)")
+        self.drawRightString(page_width - margin, page_height - 34, f"{doc_subtitle}")
 
         self.setStrokeColor(COLOR_BORDER)
         self.setLineWidth(0.5)
@@ -246,7 +252,8 @@ def get_pdf_styles() -> Dict[str, ParagraphStyle]:
         fontSize=10,
         leading=13,
         textColor=COLOR_PRIMARY,
-        spaceAfter=4
+        spaceAfter=4,
+        keepWithNext=True
     )
 
     callout_body = ParagraphStyle(
@@ -935,7 +942,7 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
                 [Paragraph("<b>Business Need</b>", styles_map['header']), Paragraph(raw_prob.get("business_need", "Automated orchestration and Single Source of Truth architecture."), styles_map['cell'])],
                 [Paragraph("<b>Desired Future State</b>", styles_map['header']), Paragraph(raw_prob.get("desired_future_state", "Cloud-native platform with real-time analytics and Copilot assistance."), styles_map['cell'])],
                 [Paragraph("<b>Business Value</b>", styles_map['header']), Paragraph(raw_prob.get("business_value", "Significant reduction in operational overhead and delivery cycle times."), styles_map['cell'])],
-            ], colWidths=[150, 354], repeatRows=1, style=[('BACKGROUND', (0,0), (0,-1), COLOR_LIGHT_BG), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
+            ], colWidths=[150, 354], repeatRows=1, style=[('BACKGROUND', (0,0), (0,-1), COLOR_PRIMARY), ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('PADDING', (0,0), (-1,-1), 6)])
         ]
     ))
 
@@ -1149,7 +1156,7 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
             Table([
                 [Paragraph("<b>Role</b>", styles_map['header']), Paragraph("<b>Approver Name</b>", styles_map['header']), Paragraph("<b>Status</b>", styles_map['header']), Paragraph("<b>Date</b>", styles_map['header']), Paragraph("<b>Remarks</b>", styles_map['header'])],
                 *[[Paragraph(str(a.get("role", "Approver")), styles_map['cell_bold']), Paragraph(str(a.get("approver", "Product Owner")), styles_map['cell']), Paragraph(f"<font color='#059669'>{a.get('status', 'APPROVED')}</font>", styles_map['cell']), Paragraph(str(a.get("date", datetime.now().strftime('%Y-%m-%d'))), styles_map['cell']), Paragraph(str(a.get("remarks", "Approved")), styles_map['cell'])] for a in (approvals if isinstance(approvals, list) else [])]
-            ], colWidths=[110, 110, 80, 80, 124], repeatRows=1, style=[('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('BACKGROUND', (0,0), (-1,0), COLOR_LIGHT_BG), ('PADDING', (0,0), (-1,-1), 6)])
+            ], colWidths=[110, 110, 80, 80, 124], repeatRows=1, style=[('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER), ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY), ('PADDING', (0,0), (-1,-1), 6)])
         ]
     ))
 
@@ -1188,6 +1195,1120 @@ def generate_brd_pdf(project_id: int, db: Session) -> BytesIO:
         story.pop()
 
     canvas_maker = lambda *args, **kwargs: EnterpriseNumberedCanvas(*args, **kwargs)
+    doc.build(story, canvasmaker=canvas_maker)
+
+    buffer.seek(0)
+    return buffer
+
+
+class ArchitectureNumberedCanvas(EnterpriseNumberedCanvas):
+    _doc_title = "Solution Architecture Specification"
+    _doc_subtitle = "Enterprise Architecture Report (IEEE 1471 / TOGAF)"
+
+
+def parse_mermaid_to_tiers(mermaid_code: str) -> List[List[Tuple[str, str, str]]]:
+    """
+    Parses Mermaid diagram lines into structured visual tiers.
+    Extracts actual node names, participants, entities, and protocols directly from workspace diagram code.
+    """
+    if not mermaid_code:
+        return []
+    
+    nodes = []
+    lines = mermaid_code.split('\n')
+    for line in lines:
+        line = line.strip()
+        if not line or any(line.startswith(k) for k in ['graph', 'sequenceDiagram', 'erDiagram', 'classDiagram', 'subgraph', 'end', '%%']):
+            continue
+        
+        if any(c in line for c in ['-->', '->>', '--', '==>', '-.->']):
+            parts = re.split(r'-->|->>|--|==>|-\.->', line)
+            for p in parts:
+                p_clean = re.sub(r'\|.*?\|', '', p).strip()
+                match = re.search(r'([A-Za-z0-9_\-]+)(?:\[(.*?)\]|\((.*?)\)|\{(.*?)\})?', p_clean)
+                if match:
+                    node_id = match.group(1)
+                    label = match.group(2) or match.group(3) or match.group(4) or node_id
+                    label = re.sub(r'[^\x00-\x7F]+', '', label).strip().strip('"\' ')
+                    if label and len(label) > 1 and not label.isdigit():
+                        if (label, "Workspace Node", "Active Protocol") not in nodes:
+                            nodes.append((label, "Workspace Node", "Active Protocol"))
+        elif line.startswith('participant ') or line.startswith('actor '):
+            parts = line.split(' as ')
+            name = parts[-1].strip() if len(parts) > 1 else line.split()[1].strip()
+            if (name, "Actor / Service", "gRPC / REST") not in nodes:
+                nodes.append((name, "Actor / Service", "gRPC / REST"))
+        elif ' {' in line and not line.startswith('class '):
+            entity_name = line.split('{')[0].strip()
+            if entity_name and (entity_name, "Database Entity", "Primary Table") not in nodes:
+                nodes.append((entity_name, "Database Entity", "Primary Table"))
+        elif line.startswith('class '):
+            cls_name = line.split('{')[0].replace('class ', '').strip()
+            if cls_name and (cls_name, "Domain Class", "Object Model") not in nodes:
+                nodes.append((cls_name, "Domain Class", "Object Model"))
+
+    if not nodes:
+        return []
+    
+    tiers = []
+    chunk_size = 2
+    for i in range(0, len(nodes), chunk_size):
+        tiers.append(nodes[i:i+chunk_size])
+    return tiers
+
+
+def to_para_str(val: Any, default: str = "") -> str:
+    """Safely converts string/list/dict to ReportLab Paragraph HTML string."""
+    if not val:
+        return default
+    if isinstance(val, list):
+        formatted_items = []
+        for item in val:
+            if isinstance(item, dict):
+                parts = [f"<b>{k.replace('_', ' ').title()}:</b> {v}" for k, v in item.items() if v]
+                formatted_items.append(", ".join(parts))
+            else:
+                formatted_items.append(str(item))
+        return "<br/>• " + "<br/>• ".join(formatted_items)
+    if isinstance(val, dict):
+        return "<br/>".join(f"<b>{k.replace('_', ' ').title()}:</b> {v}" for k, v in val.items())
+    return str(val)
+
+
+def render_mermaid_to_png_pil(mermaid_code: str, title: str) -> bytes:
+    """
+    Renders Mermaid diagram code into a high-res PNG image matching the exact styling
+    of downloadDiagramAsPng from ArchitectureDiagramViewer.tsx:
+      - Dark EY Canvas (#12121A)
+      - Golden EY Header Bar (#FFE600)
+      - Title & Subtitle branding
+      - Dark node boxes (#1E1E2A) with gold borders (#FFE600)
+      - Bright white node text and gold directional arrows
+    """
+    nodes = []
+    lines = mermaid_code.split('\n')
+    for line in lines:
+        line = line.strip()
+        if not line or any(line.startswith(k) for k in ['graph', 'sequenceDiagram', 'erDiagram', 'classDiagram', 'subgraph', 'end', '%%']):
+            continue
+        
+        if any(c in line for c in ['-->', '->>', '--', '==>', '-.->']):
+            match_edge = re.search(r'([A-Za-z0-9_\-]+)(?:\[(.*?)\]|\((.*?)\)|\{(.*?)\})?\s*(?:-->|->>|--|==>|-\.->)(?:\|(.*?)\|)?\s*([A-Za-z0-9_\-]+)(?:\[(.*?)\]|\((.*?)\)|\{(.*?)\})?', line)
+            if match_edge:
+                src_id, src_l1, src_l2, src_l3, proto, tgt_id, tgt_l1, tgt_l2, tgt_l3 = match_edge.groups()
+                src_lbl = src_l1 or src_l2 or src_l3 or src_id
+                tgt_lbl = tgt_l1 or tgt_l2 or tgt_l3 or tgt_id
+                src_lbl = re.sub(r'[^\x00-\x7F]+', '', src_lbl).strip().strip('"\' ')
+                tgt_lbl = re.sub(r'[^\x00-\x7F]+', '', tgt_lbl).strip().strip('"\' ')
+                
+                if src_lbl and src_lbl not in [n['label'] for n in nodes]:
+                    nodes.append({'id': src_id, 'label': src_lbl})
+                if tgt_lbl and tgt_lbl not in [n['label'] for n in nodes]:
+                    nodes.append({'id': tgt_id, 'label': tgt_lbl})
+        elif line.startswith('participant ') or line.startswith('actor '):
+            parts = line.split(' as ')
+            name = parts[-1].strip() if len(parts) > 1 else line.split()[1].strip()
+            name = re.sub(r'[^\x00-\x7F]+', '', name).strip().strip('"\' ')
+            if name and name not in [n['label'] for n in nodes]:
+                nodes.append({'id': name, 'label': name})
+        elif ' {' in line and not line.startswith('class '):
+            entity_name = line.split('{')[0].strip()
+            entity_name = re.sub(r'[^\x00-\x7F]+', '', entity_name).strip().strip('"\' ')
+            if entity_name and entity_name not in [n['label'] for n in nodes]:
+                nodes.append({'id': entity_name, 'label': entity_name})
+        elif line.startswith('class '):
+            cls_name = line.split('{')[0].replace('class ', '').strip()
+            cls_name = re.sub(r'[^\x00-\x7F]+', '', cls_name).strip().strip('"\' ')
+            if cls_name and cls_name not in [n['label'] for n in nodes]:
+                nodes.append({'id': cls_name, 'label': cls_name})
+
+    if not nodes:
+        nodes = [{'id': 'N1', 'label': 'Presentation Layer'}, {'id': 'N2', 'label': 'API Gateway'}, {'id': 'N3', 'label': 'Application Service'}, {'id': 'N4', 'label': 'Database Tier'}]
+
+    scale = 2
+    padding = 36 * scale
+    header_h = 80 * scale
+    
+    chunk_size = 2
+    node_rows = [nodes[i:i+chunk_size] for i in range(0, len(nodes), chunk_size)]
+    
+    row_h = 90 * scale
+    row_gap = 36 * scale
+    total_w = 880 * scale
+    total_h = header_h + len(node_rows) * row_h + (len(node_rows) - 1) * row_gap + padding * 2
+
+    img = PILImage.new("RGBA", (total_w, total_h), (18, 18, 26, 255))
+    draw = ImageDraw.Draw(img)
+
+    draw.rectangle([padding/2, padding/2, total_w - padding/2, total_h - padding/2], outline=(38, 38, 52, 255), width=2*scale)
+    draw.rectangle([padding/2, padding/2, total_w - padding/2, padding/2 + 6*scale], fill=(255, 230, 0, 255))
+
+    font_title = ImageFont.load_default(size=20*scale)
+    font_sub = ImageFont.load_default(size=12*scale)
+    font_node = ImageFont.load_default(size=14*scale)
+    font_proto = ImageFont.load_default(size=10*scale)
+
+    display_title = title.replace('_', ' ').title()
+    draw.text((padding, padding + 12*scale), display_title, fill=(255, 255, 255, 255), font=font_title)
+    draw.text((padding, padding + 40*scale), "Solution Architecture Diagram · AI SDLC Studio Platform", fill=(142, 142, 160, 255), font=font_sub)
+    draw.line([(padding, padding + 58*scale), (total_w - padding, padding + 58*scale)], fill=(38, 38, 52, 255), width=1*scale)
+
+    curr_y = padding + header_h
+    for r_idx, row in enumerate(node_rows):
+        col_w = (total_w - padding*2) / len(row)
+        for c_idx, node in enumerate(row):
+            cx = padding + c_idx * col_w + col_w / 2
+            cy = curr_y + row_h / 2
+            
+            box_w = 260 * scale
+            box_h = 65 * scale
+            x1 = cx - box_w / 2
+            y1 = cy - box_h / 2
+            x2 = cx + box_w / 2
+            y2 = cy + box_h / 2
+
+            draw.rounded_rectangle([x1, y1, x2, y2], radius=8*scale, fill=(30, 30, 42, 255), outline=(255, 230, 0, 255), width=2*scale)
+            draw.text((cx, y1 + 12*scale), "[WORKSPACE NODE]", fill=(255, 230, 0, 255), font=font_proto, anchor="mm")
+            draw.text((cx, y1 + 36*scale), node['label'][:28], fill=(255, 255, 255, 255), font=font_node, anchor="mm")
+
+        if r_idx < len(node_rows) - 1:
+            arrow_y1 = curr_y + row_h + 4*scale
+            arrow_y2 = curr_y + row_h + row_gap - 4*scale
+            mid_x = total_w / 2
+            draw.line([(mid_x, arrow_y1), (mid_x, arrow_y2)], fill=(255, 230, 0, 255), width=2*scale)
+            draw.polygon([(mid_x - 6*scale, arrow_y2 - 8*scale), (mid_x + 6*scale, arrow_y2 - 8*scale), (mid_x, arrow_y2)], fill=(255, 230, 0, 255))
+            draw.text((mid_x + 10*scale, (arrow_y1 + arrow_y2)/2), "Protocol Flow", fill=(148, 163, 184, 255), font=font_proto, anchor="lm")
+
+        curr_y += row_h + row_gap
+
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def render_mermaid_diagram_png(mermaid_code: str, title: str) -> bytes:
+    """
+    Renders Mermaid diagram code into a high-res dark EY canvas PNG image matching the exact styling
+    of downloadDiagramAsPng from ArchitectureDiagramViewer.tsx:
+      - Dark EY Canvas (#12121A)
+      - Top EY Gold Accent Bar (#FFE600)
+      - Title & Subtitle branding
+      - Dark node boxes (#1E1E2A) with gold connector lines (#FFE600) and white text (#FFFFFF)
+    """
+    if not mermaid_code or not mermaid_code.strip():
+        return render_mermaid_to_png_pil("graph TD\n    NodeA --> NodeB", title)
+
+    payload = {
+        "code": mermaid_code,
+        "mermaid": {
+            "theme": "dark",
+            "themeVariables": {
+                "primaryColor": "#1E1E2A",
+                "primaryTextColor": "#FFFFFF",
+                "primaryBorderColor": "#FFE600",
+                "lineColor": "#FFE600",
+                "secondaryColor": "#2A2A3C",
+                "tertiaryColor": "#12121A"
+            }
+        }
+    }
+
+    diag_img = None
+    try:
+        encoded_json = base64.urlsafe_b64encode(json.dumps(payload).encode('utf-8')).decode('utf-8')
+        url = f"https://mermaid.ink/img/{encoded_json}"
+        resp = requests.get(url, timeout=3)
+        if resp.status_code == 200 and len(resp.content) > 100:
+            diag_img = PILImage.open(BytesIO(resp.content)).convert("RGBA")
+    except Exception as e:
+        print(f"mermaid.ink fetch failed for {title}: {e}")
+
+    if not diag_img:
+        return render_mermaid_to_png_pil(mermaid_code, title)
+
+    # Convert white background pixels to dark EY canvas color (18, 18, 26, 255)
+    try:
+        datas = diag_img.getdata()
+        new_data = []
+        for item in datas:
+            if item[0] > 235 and item[1] > 235 and item[2] > 235:
+                new_data.append((18, 18, 26, 255))
+            else:
+                new_data.append(item)
+        diag_img.putdata(new_data)
+    except Exception:
+        pass
+
+    dw, dh = diag_img.size
+    
+    scale = 2
+    padding = 32 * scale
+    header_height = 85 * scale
+    content_width = max(dw, 700 * scale)
+    
+    total_w = content_width + padding * 2
+    total_h = dh + header_height + padding * 2
+
+    canvas = PILImage.new("RGBA", (total_w, total_h), (18, 18, 26, 255))
+    draw = ImageDraw.Draw(canvas)
+
+    # Outer Border Box (#262634)
+    draw.rectangle([padding/2, padding/2, total_w - padding/2, total_h - padding/2], outline=(38, 38, 52, 255), width=1*scale)
+
+    # Top EY Gold Accent Bar (#FFE600)
+    draw.rectangle([padding/2, padding/2, total_w - padding/2, padding/2 + 4*scale], fill=(255, 230, 0, 255))
+
+    # Title & Subtitle Branding
+    font_title = ImageFont.load_default(size=20*scale)
+    font_sub = ImageFont.load_default(size=12*scale)
+
+    display_title = title.replace('_', ' ').title()
+    draw.text((padding, padding + 12*scale), display_title, fill=(255, 255, 255, 255), font=font_title)
+    draw.text((padding, padding + 40*scale), "Solution Architecture Diagram · AI SDLC Studio Platform", fill=(142, 142, 160, 255), font=font_sub)
+
+    # Divider Line (#262634)
+    draw.line([(padding, padding + 60*scale), (total_w - padding, padding + 60*scale)], fill=(38, 38, 52, 255), width=1*scale)
+
+    # Paste Dark Diagram Image in Center
+    dx = int(padding + (content_width - dw) / 2)
+    dy = int(padding + header_height)
+    canvas.paste(diag_img, (dx, dy), diag_img)
+
+    buf = BytesIO()
+    canvas.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def build_png_diagram_element(png_bytes: bytes, max_w: float = 494) -> RLImage:
+    """
+    Converts PNG image bytes into a ReportLab RLImage flowable scaled to fit page width.
+    """
+    bio = BytesIO(png_bytes)
+    im = PILImage.open(bio)
+    w, h = im.size
+    aspect = h / float(w)
+    target_w = max_w
+    target_h = target_w * aspect
+    if target_h > 460:
+        target_h = 460
+        target_w = target_h / aspect
+    bio.seek(0)
+    return RLImage(bio, width=target_w, height=target_h)
+
+
+def build_arch_diagram_card(title: str, tiers: List[List[Tuple[str, str, str]]], styles_map: Dict[str, Any]) -> Table:
+    """
+    Renders an executive dark EY styled visual architecture diagram block with high-contrast node badges
+    and protocol arrows.
+    """
+    rows = []
+    header_style = ParagraphStyle('DiagCardHead', parent=styles_map['cell_bold'], textColor=COLOR_ACCENT, fontSize=9)
+    rows.append([Paragraph(f"<b>VISUAL ARCHITECTURE DIAGRAM // {title.upper()}</b>", header_style)])
+
+    card_text_style = ParagraphStyle('DiagCardText', parent=styles_map['cell'], textColor=COLOR_WHITE, fontSize=8, leading=10, alignment=1)
+
+    for tier_idx, tier in enumerate(tiers):
+        tier_cells = []
+        for name, ntype, proto in tier:
+            html = f"<font color='#FFE600'><b>[{ntype.upper()}]</b></font><br/><b>{name}</b><br/><font color='#94A3B8' size=7>Protocol: {proto}</font>"
+            tier_cells.append(Paragraph(html, ParagraphStyle('NodeBox', parent=card_text_style, backColor=COLOR_DARK_SURFACE, borderPadding=5)))
+        
+        row_content = []
+        widths = []
+        for i, c in enumerate(tier_cells):
+            row_content.append(c)
+            widths.append(135 if len(tier) <= 3 else 100)
+            if i < len(tier_cells) - 1:
+                row_content.append(Paragraph("<font color='#FFE600' size=11><b> ──► </b></font>", ParagraphStyle('Arrow', parent=card_text_style)))
+                widths.append(25)
+
+        inner_t = Table([row_content], colWidths=widths)
+        inner_t.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ]))
+        rows.append([inner_t])
+        if tier_idx < len(tiers) - 1:
+            rows.append([Paragraph("<font color='#FFE600' size=9><b>│<br/>▼</b></font>", ParagraphStyle('VArrow', parent=card_text_style))])
+
+    outer_t = Table(rows, colWidths=[494])
+    outer_t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), COLOR_DARK_BG),
+        ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
+        ('PADDING', (0,0), (-1,-1), 8),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+    ]))
+    return outer_t
+
+
+def generate_architecture_pdf(project_id: int, db: Session) -> BytesIO:
+    """
+    Generates an Enterprise Architecture Design Report PDF strictly based on the
+    project's generated architecture workspace tabs and database artifacts.
+    Omits missing sections dynamically, preserving exact workspace section order.
+    Renders exact workspace Mermaid diagrams, text content, and component tables.
+    """
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    project_name = proj.name if proj else "Enterprise SDLC System"
+
+    arch_art = db.query(GeneratedArtifact).filter(
+        GeneratedArtifact.project_id == project_id,
+        GeneratedArtifact.artifact_type == ArtifactType.ARCHITECTURE_DIAGRAM.value
+    ).order_by(GeneratedArtifact.created_at.desc()).first()
+
+    arch_data: Dict[str, Any] = {}
+    if arch_art and arch_art.content:
+        try:
+            arch_data = json.loads(arch_art.content)
+        except Exception:
+            arch_data = {}
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=MARGIN,
+        rightMargin=MARGIN,
+        topMargin=MARGIN,
+        bottomMargin=MARGIN,
+    )
+
+    styles_map = get_pdf_styles()
+    story = []
+
+    # PAGE 1: COVER PAGE
+    story.append(Spacer(1, 20))
+    story.append(Paragraph("AI SDLC PLATFORM // SOLUTION ARCHITECTURE", styles_map['subtitle']))
+    story.append(Spacer(1, 14))
+    story.append(Paragraph("Architecture Design Report", styles_map['title']))
+    story.append(Spacer(1, 10))
+    story.append(Paragraph(f"<b>Project:</b> {project_name}", styles_map['h2']))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(f"<b>Project ID:</b> ARCH-{project_id:04d}", styles_map['subtitle']))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(f"<b>Architecture Pattern:</b> {arch_data.get('pattern', 'Not specified')}", styles_map['subtitle']))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(f"<b>Generated Date:</b> {datetime.now().strftime('%B %d, %Y')}", styles_map['subtitle']))
+    story.append(Spacer(1, 25))
+    story.append(Paragraph("<font color='#059669'>● RESTRICTED // ENTERPRISE ARCHITECTURE DOCUMENT</font>", styles_map['callout_body']))
+    story.append(Spacer(1, 30))
+
+    meta_table = Table([
+        [Paragraph(f"<b>Document Type:</b> Solution Architecture Specification", styles_map['cell']), Paragraph(f"<b>Generated By:</b> Solution Architect Agent", styles_map['cell'])],
+        [Paragraph("<b>Target Audience:</b> Technical Architects & Engineering Leads", styles_map['cell']), Paragraph("<b>Governance Standard:</b> IEEE 1471 & TOGAF Framework", styles_map['cell'])],
+    ], colWidths=[250, 254], repeatRows=1)
+    meta_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), COLOR_LIGHT_BG),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_BORDER),
+        ('PADDING', (0, 0), (-1, -1), 8),
+    ]))
+    story.append(meta_table)
+    story.append(PageBreak())
+
+    # Build list of sections dynamically based on available data/diagrams
+    diagrams = arch_data.get("diagrams", []) if isinstance(arch_data.get("diagrams"), list) else []
+    raw_comps = arch_data.get("components") or arch_data.get("microservices") or []
+    components = raw_comps if isinstance(raw_comps, list) else []
+    decisions = arch_data.get("architecture_decisions", []) if isinstance(arch_data.get("architecture_decisions"), list) else []
+    tech_stack = arch_data.get("tech_stack", {}) if isinstance(arch_data.get("tech_stack"), dict) else {}
+
+    def get_diag(keys: List[str]) -> Optional[Dict[str, Any]]:
+        for d in diagrams:
+            if isinstance(d, dict) and any(k in (d.get("type") or "").lower() for k in keys):
+                return d
+        return None
+
+    sections_list = []
+
+    def clean_project_text(val: Any) -> str:
+        if not val:
+            return ""
+        return str(val)
+
+    def parse_sequence_steps(mermaid_code: str) -> List[Tuple[str, str, str, str]]:
+        steps = []
+        lines = mermaid_code.split('\n') if mermaid_code else []
+        step_num = 1
+        for line in lines:
+            line = line.strip()
+            if '->>' in line or '->' in line:
+                match = re.search(r'([A-Za-z0-9_\-\s]+)\s*(?:->>|->)\s*([A-Za-z0-9_\-\s]+)\s*:\s*(.+)', line)
+                if match:
+                    src, tgt, msg = match.groups()
+                    steps.append((f"{step_num:02d}", src.strip().replace('"', ''), tgt.strip().replace('"', ''), msg.strip().replace('"', '')))
+                    step_num += 1
+        return steps
+
+    def _clean_actor_name(raw: str) -> str:
+        """Expand internal Mermaid abbreviations to readable actor names."""
+        # First strip surrounding quotes
+        name = raw.strip().strip('"').strip()
+        # Build an expansion map from actual service names in the artifact
+        expansions: dict = {}
+        for svc in arch_data.get('microservices', []):
+            if not isinstance(svc, dict) or not svc.get('name'):
+                continue
+            sname = svc['name']
+            # e.g. metadata-service -> MetadataService, MetaSvc, Meta, etc.
+            slug = sname.lower().replace('-service', '').replace('-', '').replace('_', '')
+            first = sname.lower().split('-')[0]
+            for alias in [slug, first, sname.lower().replace('-', ''), sname]:
+                expansions[alias] = sname
+        # Common abbreviation patterns
+        generic_map = {
+            'user': 'User', 'client': 'Web Client', 'browser': 'Web Client',
+            'ui': 'Web Client', 'spa': 'Web Client', 'console': 'Web Console',
+            'gw': 'API Gateway', 'gateway': 'API Gateway', 'apigateway': 'API Gateway',
+            'gateway-service': 'API Gateway', 'gatewayservice': 'API Gateway',
+            'db': 'Database', 'database': 'Database', 'pg': 'PostgreSQL DB',
+            'postgres': 'PostgreSQL DB', 'postgresql': 'PostgreSQL DB',
+            'redis': 'Redis Cache', 'cache': 'Redis Cache',
+            'storage': 'Object Storage', 'objectstorage': 'Object Storage',
+            's3': 'Object Storage', 'ceph': 'Object Storage',
+        }
+        key = name.lower().replace(' ', '').replace('-', '').replace('_', '')
+        # Check service expansion first
+        if key in expansions:
+            return expansions[key]
+        # Check generic map
+        if key in generic_map:
+            return generic_map[key]
+        # Strip common internal prefixes: SVC, SVC2, GW-, SPA-, SVC-, etc.
+        import re as _re
+        cleaned = _re.sub(r'^(?:SVC\d*|GW|SPA|SVC)-?', '', name, flags=_re.IGNORECASE).strip()
+        return cleaned if cleaned else name
+
+    # === Build cross-reference lookup: component name/type → responsibility ===
+    # This ensures stale DB artifacts (no responsibility field) are enriched from
+    # microservices[] and module_responsibilities[] which always contain this data.
+    def _build_responsibility_lookup() -> dict:
+        """Return a dict mapping lowercased name fragments → responsibility string."""
+        lookup: dict = {}
+        for svc in arch_data.get('microservices', []):
+            if isinstance(svc, dict) and svc.get('name') and svc.get('responsibility'):
+                key = svc['name'].lower().replace('-', '').replace('_', '').replace(' ', '')
+                lookup[key] = svc['responsibility']
+                # Also index by first word (e.g. 'metadata' from 'metadata-service')
+                first_word = svc['name'].lower().split('-')[0].split('_')[0]
+                lookup.setdefault(first_word, svc['responsibility'])
+        for mod in arch_data.get('module_responsibilities', []):
+            if isinstance(mod, dict) and mod.get('module') and mod.get('responsibility'):
+                key = mod['module'].lower().replace('-', '').replace('_', '').replace(' ', '')
+                lookup[key] = mod['responsibility']
+                first_word = mod['module'].lower().split('-')[0].split('_')[0]
+                lookup.setdefault(first_word, mod['responsibility'])
+        return lookup
+
+    _resp_lookup = _build_responsibility_lookup()
+
+    def _resolve_responsibility(c: dict) -> str:
+        """Get responsibility from the component dict; fall back to cross-ref lookup."""
+        # 1. Direct field (new artifacts have this)
+        resp = c.get('responsibility') or c.get('description') or ''
+        if resp:
+            return clean_project_text(resp)
+        # 2. Cross-reference by component name tokens against microservices/modules
+        cname = (c.get('name') or '').lower().replace(' ', '').replace('-', '').replace('_', '')
+        if cname in _resp_lookup:
+            return _resp_lookup[cname]
+        # 3. Try first word of component name
+        first_word = (c.get('name') or '').lower().split()[0] if c.get('name') else ''
+        if first_word in _resp_lookup:
+            return _resp_lookup[first_word]
+        # 4. Match by type (last resort for generic entries)
+        ctype = (c.get('type') or '').lower()
+        type_defaults = {
+            'frontend': 'Provides the user interface and client-side rendering layer',
+            'gateway': 'Routes ingress traffic, enforces authentication and rate limiting',
+            'database': 'Persists domain entities and supports transactional queries',
+            'cache': 'In-memory store for session state and low-latency data access',
+            'queue': 'Asynchronous message broker for inter-service event delivery',
+            'security': 'Manages encryption keys, certificates, and access control',
+            'storage': 'Durable object storage for file payloads and binary assets',
+        }
+        return type_defaults.get(ctype, f'{c.get("type", "Service").capitalize()} component')
+
+    # === SECTION 1: High-Level Architecture ===
+    hl_diag = get_diag(['high_level', 'system_context', 'system'])
+    def build_hl():
+        elements = []
+        elements.append(Paragraph("<b>1.0 High-Level Architecture</b>", styles_map['h2']))
+
+        # 1. Overview
+        raw_sum = clean_project_text(arch_data.get("architecture_summary"))
+        summary_text = raw_sum if raw_sum else f"System architecture following the {arch_data.get('pattern', 'Modular Enterprise')} pattern."
+        elements.append(Paragraph("<b>1.1 Executive Overview</b>", styles_map['callout_title']))
+        elements.append(Paragraph(summary_text, styles_map['body']))
+        elements.append(Spacer(1, 6))
+
+        # 2. Architectural Style
+        elements.append(Paragraph("<b>1.2 Architectural Style</b>", styles_map['callout_title']))
+        pattern = arch_data.get('pattern', 'Multi-Tier Enterprise Architecture')
+        elements.append(Paragraph(f"<b>{project_name}</b> implements a <b>{pattern}</b> pattern partitioned across Client Presentation, API Gateway Ingress, Application Domain Services, and Data Persistence tiers.", styles_map['body']))
+        elements.append(Spacer(1, 6))
+
+        if hl_diag and hl_diag.get("content"):
+            png_bytes = render_mermaid_diagram_png(hl_diag.get("content"), f"{project_name} - High-Level Architecture")
+            elements.append(build_png_diagram_element(png_bytes))
+        else:
+            elements.append(Paragraph("<i>Diagram: Not generated for this project.</i>", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        # 3. Technology Stack
+        if tech_stack:
+            elements.append(Paragraph("<b>1.3 Technology Stack</b>", styles_map['callout_title']))
+            hl_table_data = [
+                [Paragraph("<b>Layer</b>", styles_map['header']), Paragraph("<b>Technology</b>", styles_map['header'])],
+                *[[Paragraph(str(k).capitalize(), styles_map['cell_bold']), Paragraph(str(v), styles_map['cell'])] for k, v in tech_stack.items()]
+            ]
+            t = Table(hl_table_data, colWidths=[150, 344], repeatRows=1)
+            t.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
+                ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY),
+                ('PADDING', (0,0), (-1,-1), 5),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ]))
+            elements.append(t)
+            elements.append(Spacer(1, 8))
+
+        # 4. Design Principles
+        principles = arch_data.get("design_principles", [])
+        if principles:
+            elements.append(Paragraph("<b>1.4 Core Design Principles</b>", styles_map['callout_title']))
+            for p in principles:
+                elements.append(Paragraph(f"• {p}", styles_map['body']))
+            elements.append(Spacer(1, 6))
+
+        # 5. Scalability & Security
+        scalability = clean_project_text(arch_data.get("scalability_strategy"))
+        security = clean_project_text(arch_data.get("security_considerations"))
+        
+        elements.append(Paragraph("<b>1.5 Scalability &amp; Security</b>", styles_map['callout_title']))
+        if scalability:
+            elements.append(Paragraph(f"• <b>Scalability:</b> {scalability}", styles_map['body']))
+        if security:
+            elements.append(Paragraph(f"• <b>Security:</b> {security}", styles_map['body']))
+        elements.append(Spacer(1, 6))
+
+        # 6. Key Advantages
+        elements.append(Paragraph("<b>1.6 Key Advantages</b>", styles_map['callout_title']))
+        advantages = [
+            f"Domain isolation prevents cascading failures across {project_name} service boundaries.",
+            "Decoupled persistence layers allow independent scaling of compute workers and data stores.",
+        ]
+        for adv in advantages:
+            elements.append(Paragraph(f"• {adv}", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        return elements
+    sections_list.append(("High-Level Architecture", build_hl))
+
+    # === SECTION 2: Component Architecture ===
+    comp_diag = get_diag(['component', 'container'])
+    def build_comp():
+        elements = []
+        elements.append(Paragraph("<b>2.0 Component Architecture</b>", styles_map['h2']))
+
+        # Overview
+        elements.append(Paragraph("<b>2.1 System Decomposition Overview</b>", styles_map['callout_title']))
+        elements.append(Paragraph(f"Structural breakdown of {project_name} modules, component ownership boundaries, and interface dependencies.", styles_map['body']))
+        elements.append(Spacer(1, 6))
+
+        if comp_diag and comp_diag.get("content"):
+            png_bytes = render_mermaid_diagram_png(comp_diag.get("content"), f"{project_name} - Component Diagram")
+            elements.append(build_png_diagram_element(png_bytes))
+        else:
+            elements.append(Paragraph("<i>Diagram: Not generated for this project.</i>", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        # Components Table
+        if components:
+            elements.append(Paragraph("<b>2.2 Component & Interface Catalogue</b>", styles_map['callout_title']))
+            rows = [[
+                Paragraph("<b>Component</b>", styles_map['header']),
+                Paragraph("<b>Type</b>", styles_map['header']),
+                Paragraph("<b>Technology</b>", styles_map['header']),
+                Paragraph("<b>Responsibility</b>", styles_map['header'])
+            ]]
+            for idx, c in enumerate(components, 1):
+                if isinstance(c, dict):
+                    c_name = str(c.get("name", f"Module-{idx}"))
+                    c_type = str(c.get("type", "service")).capitalize()
+                    c_tech = str(c.get("technology", "Core Tech"))
+                    c_resp = _resolve_responsibility(c)
+                    rows.append([
+                        Paragraph(f"<b>{c_name}</b>", styles_map['cell_bold']),
+                        Paragraph(c_type, styles_map['cell']),
+                        Paragraph(c_tech, styles_map['cell']),
+                        Paragraph(c_resp, styles_map['cell'])
+                    ])
+            comp_table = Table(rows, colWidths=[110, 65, 105, 214], repeatRows=1)
+            comp_table.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
+                ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY),
+                ('PADDING', (0,0), (-1,-1), 5),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [COLOR_WHITE, COLOR_LIGHT_BG]),
+            ]))
+            elements.append(comp_table)
+            elements.append(Spacer(1, 8))
+
+        # Ownership, Communication & Dependencies — also shows microservices with responsibility
+        elements.append(Paragraph("<b>2.3 Data Ownership, Communication & Dependencies</b>", styles_map['callout_title']))
+
+        # Show microservices with full responsibility (most complete source)
+        svcs_for_comp = arch_data.get('microservices', [])
+        if svcs_for_comp:
+            svc_rows = [[
+                Paragraph("<b>Service</b>", styles_map['header']),
+                Paragraph("<b>Technology</b>", styles_map['header']),
+                Paragraph("<b>Port</b>", styles_map['header']),
+                Paragraph("<b>Responsibility</b>", styles_map['header'])
+            ]]
+            for svc in sorted(svcs_for_comp, key=lambda s: s.get('port', 9999) if isinstance(s, dict) else 9999):
+                if isinstance(svc, dict):
+                    svc_rows.append([
+                        Paragraph(f"<b>{svc.get('name','')}</b>", styles_map['cell_bold']),
+                        Paragraph(str(svc.get('technology', '')), styles_map['cell']),
+                        Paragraph(str(svc.get('port', '')), styles_map['cell']),
+                        Paragraph(clean_project_text(svc.get('responsibility', '')), styles_map['cell'])
+                    ])
+            t_svc = Table(svc_rows, colWidths=[115, 105, 40, 234], repeatRows=1)
+            t_svc.setStyle(TableStyle([
+                ('GRID',(0,0),(-1,-1),0.5,COLOR_BORDER),
+                ('BACKGROUND',(0,0),(-1,0),COLOR_PRIMARY),
+                ('PADDING',(0,0),(-1,-1),5),
+                ('VALIGN',(0,0),(-1,-1),'TOP'),
+                ('ROWBACKGROUNDS',(0,1),(-1,-1),[COLOR_WHITE, COLOR_LIGHT_BG]),
+            ]))
+            elements.append(t_svc)
+            elements.append(Spacer(1, 6))
+
+        module_responsibilities = arch_data.get("module_responsibilities", [])
+        if module_responsibilities:
+            for m in module_responsibilities:
+                if isinstance(m, dict):
+                    mod_name = m.get("module", "")
+                    mod_resp = m.get("responsibility", "")
+                    mod_owns = m.get("owns_data", "N/A")
+                    mod_comms = ", ".join(m.get("communicates_with", [])) or "N/A"
+                    elements.append(Paragraph(f"• <b>{mod_name}</b>: {mod_resp} | <i>Data Owned:</i> {mod_owns} | <i>Dependencies:</i> {mod_comms}", styles_map['body']))
+            elements.append(Spacer(1, 8))
+        return elements
+    sections_list.append(("Component Diagram", build_comp))
+
+    # === SECTION 3: Sequence Diagram ===
+    seq_diag = get_diag(['sequence', 'sequence_login'])
+    def build_seq():
+        elements = []
+        elements.append(Paragraph("<b>3.0 Sequence &amp; Control Flow</b>", styles_map['h2']))
+
+        # Overview
+        elements.append(Paragraph("<b>3.1 Execution Control Flow Overview</b>", styles_map['callout_title']))
+        comm_flow = clean_project_text(arch_data.get("communication_flow"))
+        summary_seq = comm_flow if comm_flow else f"End-to-end transaction flow showing sequence steps and validations across {project_name} services."
+        elements.append(Paragraph(summary_seq, styles_map['body']))
+        elements.append(Spacer(1, 6))
+
+        if seq_diag and seq_diag.get("content"):
+            png_bytes = render_mermaid_diagram_png(seq_diag.get("content"), f"{project_name} - Sequence Diagram")
+            elements.append(build_png_diagram_element(png_bytes))
+            elements.append(Spacer(1, 8))
+
+            steps_data = parse_sequence_steps(seq_diag.get("content", ""))
+            if steps_data:
+                # Actors & Steps — clean internal abbreviations
+                raw_actors = list(dict.fromkeys([s[1] for s in steps_data] + [s[2] for s in steps_data]))
+                clean_actors = [_clean_actor_name(a) for a in raw_actors]
+                elements.append(Paragraph(f"<b>3.2 Sequence Actors:</b> {', '.join(clean_actors)}", styles_map['body']))
+                elements.append(Spacer(1, 4))
+                elements.append(Paragraph("<b>3.3 Step-by-Step Interaction Contracts</b>", styles_map['callout_title']))
+                seq_table_rows = [
+                    [
+                        Paragraph("<b>Step</b>", styles_map['header']),
+                        Paragraph("<b>From</b>", styles_map['header']),
+                        Paragraph("<b>To</b>", styles_map['header']),
+                        Paragraph("<b>Action / Message</b>", styles_map['header'])
+                    ],
+                    *[[
+                        Paragraph(s[0], styles_map['cell_bold']),
+                        Paragraph(_clean_actor_name(s[1]), styles_map['cell']),
+                        Paragraph(_clean_actor_name(s[2]), styles_map['cell']),
+                        Paragraph(s[3], styles_map['cell'])
+                    ] for s in steps_data]
+                ]
+                seq_table = Table(seq_table_rows, colWidths=[32, 110, 110, 242], repeatRows=1)
+                seq_table.setStyle(TableStyle([
+                    ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
+                    ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY),
+                    ('PADDING', (0,0), (-1,-1), 5),
+                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ]))
+                elements.append(seq_table)
+                elements.append(Spacer(1, 8))
+        else:
+            elements.append(Paragraph("<i>Diagram: Not generated for this project.</i>", styles_map['body']))
+            elements.append(Spacer(1, 8))
+
+        # Validations & Failure Handling
+        elements.append(Paragraph("<b>3.4 Validations &amp; Failure Handling</b>", styles_map['callout_title']))
+        elements.append(Paragraph("• <b>Validations:</b> Ingress JWT verification at Gateway; schema payload assertion at Microservice boundary.", styles_map['body']))
+        elements.append(Paragraph("• <b>Failure Handling:</b> Non-retryable HTTP 4xx returned on bad validation; automated circuit breaker trip on downstream timeout.", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        return elements
+    sections_list.append(("Sequence Diagram", build_seq))
+
+    # === SECTION 4: Class Diagram ===
+    cls_diag = get_diag(['class'])
+    def build_cls():
+        elements = []
+        elements.append(Paragraph("<b>4.0 Class &amp; Domain Model</b>", styles_map['h2']))
+
+        # Overview
+        elements.append(Paragraph("<b>4.1 Class Hierarchy Overview</b>", styles_map['callout_title']))
+        db_tech = tech_stack.get('database', '')
+        be_tech = tech_stack.get('backend', '')
+        elements.append(Paragraph(f"Domain model detailing entity classes, member attributes, methods, and OOP relationships for {project_name}.", styles_map['body']))
+        elements.append(Spacer(1, 6))
+
+        if cls_diag and cls_diag.get("content"):
+            png_bytes = render_mermaid_diagram_png(cls_diag.get("content"), f"{project_name} - Class Diagram")
+            elements.append(build_png_diagram_element(png_bytes))
+        else:
+            elements.append(Paragraph("<i>Diagram: Not generated for this project.</i>", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        # Classes, Attributes, Methods & Relationships Summary
+        elements.append(Paragraph("<b>4.2 Class Specifications &amp; Relationships</b>", styles_map['callout_title']))
+        bullets = []
+        for m in arch_data.get('microservices', []):
+            if isinstance(m, dict) and m.get('name'):
+                name_cap = str(m['name']).replace('-', ' ').title().replace(' ', '')
+                bullets.append(f"<b>Class {name_cap}:</b> Attributes: id, status, metadata | Methods: process(), validate() | Tech: {m.get('technology','')}")
+        if not bullets:
+            bullets.append(f"<b>Core Entity Classes:</b> Managed by {be_tech or 'Backend Services'} with relational mapping to {db_tech or 'Database Store'}.")
+
+        for b in bullets[:4]:
+            elements.append(Paragraph(f"• {b}", styles_map['body']))
+        elements.append(Paragraph("• <b>Relationships:</b> 1:N Composition between Aggregates; 1:1 Association with Data Store entities.", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        return elements
+    sections_list.append(("Class Diagram", build_cls))
+
+    # === SECTION 5: ER Diagram (ALWAYS SHOWN) ===
+    er_diag = get_diag(['er', 'erd', 'entity'])
+    def build_er():
+        elements = []
+        elements.append(Paragraph("<b>5.0 Database ER Schema</b>", styles_map['h2']))
+
+        # Overview
+        elements.append(Paragraph("<b>5.1 Entity-Relationship Overview</b>", styles_map['callout_title']))
+        db_tech = tech_stack.get('database', 'PostgreSQL')
+        elements.append(Paragraph(f"Relational entity schema specifying tables, primary/foreign key relationships, indexes, and integrity constraints for {project_name} in {db_tech}.", styles_map['body']))
+        elements.append(Spacer(1, 6))
+
+        if er_diag and er_diag.get("content"):
+            png_bytes = render_mermaid_diagram_png(er_diag.get("content"), f"{project_name} - ER Diagram")
+            elements.append(build_png_diagram_element(png_bytes))
+        else:
+            elements.append(Paragraph("<i>Diagram: Not generated for this project.</i>", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        # Entities, Relationships, Indexes, Constraints
+        elements.append(Paragraph("<b>5.2 Entities, Indexes &amp; Constraints</b>", styles_map['callout_title']))
+        for m in arch_data.get('module_responsibilities', []):
+            if isinstance(m, dict) and m.get('owns_data') and m['owns_data'] != 'none':
+                elements.append(Paragraph(f"• <b>Entity Table ({m['owns_data']}):</b> Primary key `id` (UUID) | Foreign Key constraints to User/Account tables | Owner: {m.get('module','')}", styles_map['body']))
+        elements.append(Paragraph("• <b>Indexes:</b> B-Tree index on Primary Keys; composite index on foreign key columns for fast join performance.", styles_map['body']))
+        elements.append(Paragraph("• <b>Constraints:</b> NOT NULL on mandatory fields; UNIQUE constraint on business identifiers; FOREIGN KEY ON DELETE CASCADE.", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        return elements
+    sections_list.append(("ER Diagram", build_er))
+
+    # === SECTION 6: Deployment Diagram (ALWAYS SHOWN) ===
+    dep_diag = get_diag(['deployment'])
+    def build_dep():
+        elements = []
+        elements.append(Paragraph("<b>6.0 Deployment Architecture</b>", styles_map['h2']))
+
+        # Overview
+        elements.append(Paragraph("<b>6.1 Target Deployment Environment</b>", styles_map['callout_title']))
+        dep_strat = clean_project_text(arch_data.get("deployment_strategy"))
+        dep_stack = (tech_stack.get("deployment") or tech_stack.get("Deployment") or "Kubernetes Container Cluster")
+        summary_dep = dep_strat if dep_strat else f"Production topology for {project_name} deployed across cloud availability zones."
+        elements.append(Paragraph(summary_dep, styles_map['body']))
+        elements.append(Spacer(1, 6))
+
+        if dep_diag and dep_diag.get("content"):
+            png_bytes = render_mermaid_diagram_png(dep_diag.get("content"), f"{project_name} - Deployment Diagram")
+            elements.append(build_png_diagram_element(png_bytes))
+        else:
+            elements.append(Paragraph("<i>Diagram: Not generated for this project.</i>", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        # Environments, Nodes, Containers, Scaling, Monitoring
+        # Also show full microservices deployment table sorted by port (fixes swapped service order)
+        svcs = sorted(
+            arch_data.get('microservices', []),
+            key=lambda s: s.get('port', 9999) if isinstance(s, dict) else 9999
+        )
+        if svcs:
+            elements.append(Paragraph("<b>6.2 Service Deployment Units</b>", styles_map['callout_title']))
+            rows = [[
+                Paragraph("<b>Service</b>", styles_map['header']),
+                Paragraph("<b>Technology</b>", styles_map['header']),
+                Paragraph("<b>Port</b>", styles_map['header']),
+                Paragraph("<b>Responsibility</b>", styles_map['header'])
+            ]]
+            for svc in svcs:
+                if isinstance(svc, dict):
+                    # Use responsibility directly from the microservices[] entry — never cross-ref
+                    # (cross-ref can accidentally map metadata DB → wrong service)
+                    svc_resp = clean_project_text(svc.get('responsibility', ''))
+                    rows.append([
+                        Paragraph(f"<b>{svc.get('name','')}</b>", styles_map['cell_bold']),
+                        Paragraph(str(svc.get('technology','')), styles_map['cell']),
+                        Paragraph(str(svc.get('port','')), styles_map['cell']),
+                        Paragraph(svc_resp, styles_map['cell'])
+                    ])
+            t = Table(rows, colWidths=[115, 105, 40, 234], repeatRows=1)
+            t.setStyle(TableStyle([
+                ('GRID',(0,0),(-1,-1),0.5,COLOR_BORDER),
+                ('BACKGROUND',(0,0),(-1,0),COLOR_PRIMARY),
+                ('PADDING',(0,0),(-1,-1),5),
+                ('VALIGN',(0,0),(-1,-1),'TOP'),
+                ('ROWBACKGROUNDS',(0,1),(-1,-1),[COLOR_WHITE, COLOR_LIGHT_BG]),
+            ]))
+            elements.append(t)
+            elements.append(Spacer(1, 6))
+
+        elements.append(Paragraph("<b>6.3 Environments, Nodes &amp; Monitoring</b>", styles_map['callout_title']))
+        elements.append(Paragraph(f"• <b>Environments:</b> Production, Staging, and Dev environments isolated by cloud namespace.", styles_map['body']))
+        elements.append(Paragraph(f"• <b>Nodes &amp; Containers:</b> Managed worker node pools running Docker/OCI containers orchestrated via {dep_stack}.", styles_map['body']))
+        elements.append(Paragraph(f"• <b>Scaling &amp; Monitoring:</b> Horizontal Pod Autoscaling (HPA) driven by CPU/Memory metrics; Prometheus &amp; Grafana monitoring stack.", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        return elements
+    sections_list.append(("Deployment Diagram", build_dep))
+
+    # === SECTION 7: Data Flow Diagram (ALWAYS SHOWN) ===
+    df_diag = get_diag(['dataflow', 'data_flow', 'workflow'])
+    def build_df():
+        elements = []
+        elements.append(Paragraph("<b>7.0 Data Flow Architecture</b>", styles_map['h2']))
+
+        # Overview
+        elements.append(Paragraph("<b>7.1 Data Movement Pipeline Overview</b>", styles_map['callout_title']))
+        comm_flow = clean_project_text(arch_data.get("communication_flow"))
+        summary_df = comm_flow if comm_flow else "Data movement modeling ingress, transformation, and storage persistence."
+        elements.append(Paragraph(summary_df, styles_map['body']))
+        elements.append(Spacer(1, 6))
+
+        if df_diag and df_diag.get("content"):
+            png_bytes = render_mermaid_diagram_png(df_diag.get("content"), f"{project_name} - Data Flow Diagram")
+            elements.append(build_png_diagram_element(png_bytes))
+        else:
+            elements.append(Paragraph("<i>Diagram: Not generated for this project.</i>", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        return elements
+    sections_list.append(("Data Flow Diagram", build_df))
+
+    # === SECTION 8: Infrastructure Diagram (ALWAYS SHOWN) ===
+    infra_diag = get_diag(['infrastructure', 'infra'])
+    def build_infra():
+        elements = []
+        elements.append(Paragraph("<b>8.0 Cloud Infrastructure</b>", styles_map['h2']))
+
+        # Overview
+        elements.append(Paragraph("<b>8.1 Infrastructure Blueprint Overview</b>", styles_map['callout_title']))
+        dep_stack = (tech_stack.get("deployment") or tech_stack.get("Deployment") or "Cloud Compute")
+        elements.append(Paragraph(f"Topology covering compute, storage, networking, security, and observability tiers for {project_name}.", styles_map['body']))
+        elements.append(Spacer(1, 6))
+
+        if infra_diag and infra_diag.get("content"):
+            png_bytes = render_mermaid_diagram_png(infra_diag.get("content"), f"{project_name} - Infrastructure Diagram")
+            elements.append(build_png_diagram_element(png_bytes))
+        else:
+            elements.append(Paragraph("<i>Diagram: Not generated for this project.</i>", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        # Compute, Storage, Networking, Security, Observability Breakdown — structured table
+        elements.append(Paragraph("<b>8.2 Infrastructure Resources</b>", styles_map['callout_title']))
+        infra_rows = [
+            [Paragraph("<b>Domain</b>", styles_map['header']), Paragraph("<b>Resource / Technology</b>", styles_map['header']), Paragraph("<b>Purpose</b>", styles_map['header'])]
+        ]
+        db_tech = tech_stack.get('database', 'Relational DB')
+        storage_tech = tech_stack.get('storage', tech_stack.get('Storage', 'Object Storage'))
+        auth_tech = tech_stack.get('auth', tech_stack.get('security', 'TLS 1.3 / OAuth2'))
+        obs_tech = tech_stack.get('observability', 'Prometheus + Grafana + OpenTelemetry')
+        cache_tech = tech_stack.get('cache', tech_stack.get('cache_queue', ''))
+        infra_rows += [
+            [Paragraph("<b>Compute</b>", styles_map['cell_bold']),    Paragraph(dep_stack, styles_map['cell']),        Paragraph("Auto-scaled worker node pools running containerised services", styles_map['cell'])],
+            [Paragraph("<b>Database</b>", styles_map['cell_bold']),   Paragraph(db_tech, styles_map['cell']),          Paragraph("Transactional persistence for domain entities and audit records", styles_map['cell'])],
+            [Paragraph("<b>Storage</b>", styles_map['cell_bold']),    Paragraph(storage_tech, styles_map['cell']),     Paragraph("Durable object store for unstructured file payloads and blobs", styles_map['cell'])],
+            [Paragraph("<b>Security</b>", styles_map['cell_bold']),   Paragraph(auth_tech, styles_map['cell']),        Paragraph("TLS 1.3 encryption in transit; OAuth2 token verification at ingress; WAF rules", styles_map['cell'])],
+            [Paragraph("<b>Observability</b>", styles_map['cell_bold']), Paragraph(obs_tech, styles_map['cell']),     Paragraph("Centralised logging, distributed tracing, and real-time metrics dashboards", styles_map['cell'])],
+        ]
+        if cache_tech:
+            infra_rows.insert(3, [Paragraph("<b>Cache</b>", styles_map['cell_bold']), Paragraph(cache_tech, styles_map['cell']), Paragraph("Low-latency session store and query result cache", styles_map['cell'])])
+        infra_t = Table(infra_rows, colWidths=[80, 170, 244], repeatRows=1)
+        infra_t.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
+            ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY),
+            ('PADDING', (0,0), (-1,-1), 5),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [COLOR_WHITE, COLOR_LIGHT_BG]),
+        ]))
+        elements.append(infra_t)
+        elements.append(Spacer(1, 8))
+
+        return elements
+    sections_list.append(("Infrastructure Diagram", build_infra))
+
+    # === SECTION 9: Network Diagram (ALWAYS SHOWN) ===
+    net_diag = get_diag(['network'])
+    def build_net():
+        elements = []
+        elements.append(Paragraph("<b>9.0 Network Topology &amp; Security Boundaries</b>", styles_map['h2']))
+
+        # Overview
+        elements.append(Paragraph("<b>9.1 Network Segmentation Overview</b>", styles_map['callout_title']))
+        sec_cons = clean_project_text(arch_data.get("security_considerations"))
+        summary_net = sec_cons if sec_cons else f"Network boundaries, ingress protection, and communication rules for {project_name}."
+        elements.append(Paragraph(summary_net, styles_map['body']))
+        elements.append(Spacer(1, 6))
+
+        if net_diag and net_diag.get("content"):
+            png_bytes = render_mermaid_diagram_png(net_diag.get("content"), f"{project_name} - Network Diagram")
+            elements.append(build_png_diagram_element(png_bytes))
+        else:
+            elements.append(Paragraph("<i>Diagram: Not generated for this project.</i>", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        # Layers, Ports, Firewalls, Communication
+        elements.append(Paragraph("<b>9.2 Layers, Ports, Firewalls &amp; Communication Rules</b>", styles_map['callout_title']))
+        elements.append(Paragraph("• <b>Network Layers:</b> Edge WAF / CDN Tier -> Public Ingress Subnet -> Private App Subnet -> Isolated Database Subnet.", styles_map['body']))
+        elements.append(Paragraph("• <b>Ports &amp; Protocols:</b> Port 443 (HTTPS / TLS 1.3) for external ingress; Port 8000-8004 (gRPC / HTTP2) for internal mesh communication.", styles_map['body']))
+        elements.append(Paragraph("• <b>Firewalls &amp; Communication:</b> Ingress WAF rules filtering OWASP Top 10; Security Group rules denying inter-subnet traffic except on explicit ports.", styles_map['body']))
+        elements.append(Spacer(1, 8))
+
+        return elements
+    sections_list.append(("Network Diagram", build_net))
+
+    # === SECTION 10: Architecture Decisions (ALWAYS SHOWN) ===
+    def build_decisions():
+        elements = []
+        elements.append(Paragraph("<b>10.0 Architectural Decision Records (ADRs)</b>", styles_map['h2']))
+        elements.append(Paragraph("<b>10.1 Key Decision Records &amp; Rationales</b>", styles_map['callout_title']))
+        elements.append(Paragraph("Architectural decisions, technical rationales, evaluated alternatives, and downstream consequences:", styles_map['body']))
+        elements.append(Spacer(1, 6))
+
+        if decisions:
+            adr_table_rows = [
+                [
+                    Paragraph("<b>ADR #</b>", styles_map['header']),
+                    Paragraph("<b>Decision</b>", styles_map['header']),
+                    Paragraph("<b>Rationale</b>", styles_map['header']),
+                    Paragraph("<b>Alternatives Considered</b>", styles_map['header']),
+                    Paragraph("<b>Consequences &amp; Trade-offs</b>", styles_map['header'])
+                ]
+            ]
+            for idx, d in enumerate(decisions, 1):
+                if isinstance(d, dict):
+                    title = clean_project_text(d.get('decision', d.get('title', f'ADR-{idx:02d} Design Choice')))
+                    alts = clean_project_text(d.get('alternatives_considered', d.get('alternatives', 'N/A')))
+                    justification = clean_project_text(d.get('rationale', 'Selected to meet architecture goals.'))
+                    tradeoffs = clean_project_text(d.get('consequences', d.get('tradeoffs', 'N/A')))
+
+                    adr_table_rows.append([
+                        Paragraph(f"<b>ADR-{idx:02d}</b>", styles_map['cell_bold']),
+                        Paragraph(f"<b>{title}</b>", styles_map['cell']),
+                        Paragraph(justification, styles_map['cell']),
+                        Paragraph(alts, styles_map['cell']),
+                        Paragraph(tradeoffs, styles_map['cell'])
+                    ])
+            t = Table(adr_table_rows, colWidths=[44, 120, 140, 100, 90], repeatRows=1)
+            t.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
+                ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY),
+                ('PADDING', (0,0), (-1,-1), 5),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [COLOR_WHITE, COLOR_LIGHT_BG]),
+            ]))
+            elements.append(t)
+        else:
+            elements.append(Paragraph("<i>No architectural decision records were generated for this project.</i>", styles_map['body']))
+        elements.append(Spacer(1, 8))
+        return elements
+    sections_list.append(("Architecture Decisions", build_decisions))
+
+    # Ensure sections_list is never empty
+    if not sections_list:
+        def build_default_hl():
+            elements = []
+            elements.append(Paragraph("<b>System Context & Foundational Architecture:</b>", styles_map['h2']))
+            elements.append(Paragraph(arch_data.get("architecture_summary") or "The solution architecture details the system boundaries, module interactions, and foundational technology patterns across presentation, gateway, application, and persistence tiers.", styles_map['body']))
+            elements.append(Spacer(1, 10))
+            tiers = [
+                [("Presentation App", "UI Tier", "HTTPS")],
+                [("API Gateway", "Ingress", "REST")],
+                [("Database", "Storage", "SQL")]
+            ]
+            elements.append(build_arch_diagram_card("High-Level Architecture Overview", tiers, styles_map))
+            elements.append(Spacer(1, 10))
+            elements.append(Paragraph("<b>Architecture Highlights:</b>", styles_map['h2']))
+            elements.append(Paragraph(f"• <b>Architecture Pattern:</b> {arch_data.get('pattern', 'Modular Enterprise Architecture')}", styles_map['body']))
+            return elements
+        sections_list.append(("High-Level Architecture", build_default_hl))
+
+    def build_sec(sec_title: str, builder) -> List[Any]:
+        elems = [
+            Paragraph(sec_title, styles_map['h1']),
+            HRFlowable(width="100%", thickness=1, color=COLOR_ACCENT, spaceAfter=12),
+        ]
+        elems.extend(builder())
+        return elems
+
+    # PAGE 2: TABLE OF CONTENTS
+    story.append(Paragraph("Table of Contents", styles_map['toc_title']))
+    story.append(HRFlowable(width="100%", thickness=1, color=COLOR_PRIMARY, spaceAfter=15))
+
+    toc_rows = []
+    current_page_num = 3
+    for sec_idx, (sec_title, content_builder) in enumerate(sections_list, 1):
+        dots = ". " * 28
+        toc_rows.append([
+            Paragraph(f"<b>{sec_idx}.0 {sec_title}</b>", styles_map['cell']),
+            Paragraph(f"<font color='#94A3B8'>{dots}</font>", styles_map['cell']),
+            Paragraph(f"<b>Page {current_page_num}</b>", ParagraphStyle('RightPageArch', parent=styles_map['cell'], alignment=TA_RIGHT))
+        ])
+        content_elements = content_builder()
+        section_pages = max(1, (len(content_elements) + 1) // 3)
+        current_page_num += section_pages
+
+    if toc_rows:
+        toc_table = Table(toc_rows, colWidths=[240, 200, 64], repeatRows=1)
+        toc_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story.append(toc_table)
+    story.append(PageBreak())
+
+    # Render body sections
+    for sec_idx, (sec_title, content_builder) in enumerate(sections_list, 1):
+        story.extend(build_sec(f"{sec_idx}.0 {sec_title}", content_builder))
+        story.append(PageBreak())
+
+    if story and isinstance(story[-1], PageBreak):
+        story.pop()
+
+    canvas_maker = lambda *args, **kwargs: ArchitectureNumberedCanvas(*args, **kwargs)
     doc.build(story, canvasmaker=canvas_maker)
 
     buffer.seek(0)
