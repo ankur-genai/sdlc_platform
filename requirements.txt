@@ -1,45 +1,55 @@
 # =============================================================================
 # SDLC Platform — Python dependencies
-# Install with: pip install -r requirements.txt
+# Install with:  pip install -r requirements.txt
 #
-# Version strategy: hard-pin the core web/auth stack for reproducibility;
-# use >= lower-bounds for document/media libraries that release frequently.
+# Version-pin strategy:
+#   == exact   → pure-Python packages or packages whose pinned release has a
+#                pre-built wheel for the target Python version.
+#                These pins give fully reproducible installs.
+#   >= minimum → compiled-extension packages (C/Rust) where the original exact
+#                pin pre-dates Python 3.11+ wheel availability.  The lower
+#                bound is the minimum version that introduced the required API.
 # =============================================================================
 
-# ── Core Web Framework ────────────────────────────────────────────────────────
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.6
-python-dotenv>=1.0.1
-python-multipart>=0.0.9
+# ── Core Web Framework (pure-Python — exact pins) ────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-dotenv==1.0.1
+python-multipart==0.0.9
+starlette>=0.37.0             # transitive; fastapi pins this, listed for clarity
 
 # ── Database ──────────────────────────────────────────────────────────────────
-sqlalchemy>=2.0.35
+sqlalchemy==2.0.35
+# psycopg2-binary has C extensions; >=2.9.9 allows pip to pick a wheel built
+# for the installed Python version (e.g. 2.9.12 for Python 3.14).
 psycopg2-binary>=2.9.9
 
 # ── Validation & Serialisation ────────────────────────────────────────────────
+# pydantic-core is a Rust extension; >=2.9.2 allows pip to pick the wheel that
+# matches the installed Python (e.g. 2.13.x for Python 3.14).
 pydantic>=2.9.2
 
 # ── Auth & Security ───────────────────────────────────────────────────────────
-PyJWT>=2.9.0
-passlib[bcrypt]>=1.7.4
+PyJWT==2.9.0
+passlib[bcrypt]==1.7.4
+# cryptography has Rust extensions; >=43.0.1 allows compatible wheel selection.
 cryptography>=43.0.1
-email-validator>=2.2.0
+email-validator==2.2.0
 
-# ── HTTP Client ───────────────────────────────────────────────────────────────
+# ── HTTP Client (pure-Python) ─────────────────────────────────────────────────
 requests>=2.31.0
 
 # ── Presentation & Video Generation ──────────────────────────────────────────
-# PPTX authoring, slide rasterisation, video frame composition
-python-pptx>=1.0.2
+python-pptx==1.0.2
 Pillow>=12.2.0
-pdf2image>=1.17.0   # requires poppler on PATH (see SYSTEM DEPENDENCIES below)
+pdf2image>=1.17.0     # runtime requires poppler on PATH — see SYSTEM DEPS below
 
 # ── PDF Generation & Reading ──────────────────────────────────────────────────
-# reportlab  — write PDFs (pdf_generator.py)
-# pypdf      — read/inspect PDFs (pdf_generator.py verifiers, main_extension.py)
-# PyPDF2     — legacy fallback reader (presentation_routes.py _extract_pdf_text)
-# pdfplumber — structured text extraction from PDFs (main.py, presentation_routes.py)
-# pymupdf    — high-fidelity PDF/PPTX rasterisation (fitz import)
+# reportlab   — write architecture PDFs          (pdf_generator.py)
+# pypdf       — read PDFs at runtime             (pdf_generator.py, main_extension.py)
+# PyPDF2      — legacy fallback PDF reader        (presentation_routes.py)
+# pdfplumber  — structured text extraction       (main.py, presentation_routes.py)
+# pymupdf     — high-fidelity PDF rasterisation  (fitz import in pptx pipeline)
 reportlab>=3.6.0
 pypdf>=3.0.0
 PyPDF2>=3.0.0
@@ -47,54 +57,51 @@ pdfplumber>=0.11.0
 pymupdf>=1.23.0
 
 # ── Document Ingestion ────────────────────────────────────────────────────────
-# python-docx — read/write .docx uploads (main.py _extract_document_text)
-# Without this, .docx BRD/RFP uploads silently produce an empty string.
+# Without python-docx, .docx BRD/RFP uploads silently produce an empty string
+# instead of failing loudly — easy to miss until a real document is uploaded.
 python-docx>=1.1.0
 
 # ── Text-to-Speech ────────────────────────────────────────────────────────────
-# Default TTS tier: edge-tts (free, Microsoft neural voices, no API key needed).
-# Requires outbound network access to Microsoft's public TTS endpoint.
+# Default tier: edge-tts (Microsoft neural voices, free, no API key).
+# Requires outbound HTTPS to Microsoft TTS endpoint.
 # Set DISABLE_EDGE_TTS=1 to skip and fall back to macOS `say` / espeak-ng.
 edge-tts>=7.0.0
-
-# Auto-translation for non-English narration voices (e.g. Madhur/Swara Hindi).
-# Free, no API key — wraps Google Translate's public web endpoint.
+# Auto-translation for non-English voices (e.g. Madhur/Swara Hindi).
+# Free — wraps Google Translate's public endpoint, no API key required.
 deep-translator>=1.11.0
 
 # =============================================================================
-# SYSTEM DEPENDENCIES (OS-level binaries — NOT installed by pip)
+# SYSTEM DEPENDENCIES  (OS binaries — NOT installed by pip)
 # Install once via your OS package manager before running video/slide pipelines.
 #
-#   ffmpeg     — video/audio encode + compose  (video_pipeline_local.py, video_composer.py)
-#   ffprobe    — audio/video duration lookups  (ships alongside ffmpeg)
-#   pdftoppm   — PDF → PNG rasterisation       (part of poppler, used by pdf2image)
-#   soffice    — PPTX → PDF conversion         (LibreOffice; no pip equivalent)
+#   ffmpeg    — video/audio encode + compose  (video_pipeline_local.py, video_composer.py)
+#   ffprobe   — duration lookups             (ships with ffmpeg)
+#   pdftoppm  — PDF → PNG rasterisation      (part of poppler, required by pdf2image)
+#   soffice   — PPTX → PDF conversion        (LibreOffice; no pip equivalent)
 #
-# One-time install (pick your OS):
-#   macOS   :  brew install ffmpeg poppler; brew install --cask libreoffice
-#   Ubuntu  :  sudo apt install ffmpeg poppler-utils libreoffice
-#   Windows :  choco install ffmpeg poppler libreoffice
+# macOS  :  brew install ffmpeg poppler && brew install --cask libreoffice
+# Ubuntu :  sudo apt install ffmpeg poppler-utils libreoffice
+# Windows:  choco install ffmpeg poppler libreoffice
 #
-# Verify all four are on PATH:
-#   ffmpeg -version && ffprobe -version && pdftoppm -v && soffice --version
+# Verify: ffmpeg -version && ffprobe -version && pdftoppm -v && soffice --version
 # =============================================================================
 
 # =============================================================================
-# OPTIONAL DEPENDENCIES (install only if you need specific features)
+# OPTIONAL DEPENDENCIES  (install only when enabling specific features)
 #
-# Human Avatar presenter (SadTalker AI lip-sync):
+# Human Avatar / SadTalker AI lip-sync presenter:
 #   pip install torch torchvision facexlib gfpgan kornia face_alignment yacs pydub basicsr
-#   Note: basicsr 1.4.2 uses torchvision.transforms.functional_tensor (removed in newer
-#   torchvision). If you hit that ImportError, patch:
-#     site-packages/basicsr/data/degradations.py: functional_tensor -> functional
+#   Note: basicsr 1.4.2 uses torchvision.transforms.functional_tensor (removed in
+#   newer torchvision). Patch site-packages/basicsr/data/degradations.py:
+#     functional_tensor → functional
 #   (see backend/fastapi_agents/video_pipeline_local.py::sadtalker_status)
 #
-# Azure Speech or Coqui XTTS narration (/video/render PDF-to-video pipeline only):
+# Azure Speech or Coqui XTTS narration  (/video/render endpoint only):
 #   pip install azure-cognitiveservices-speech   # provider="azure" (default)
 #   pip install TTS                              # provider="coqui" fallback
-#   NOTE: The default Presentation Agent pipeline uses edge-tts above and works
-#   out of the box without these. Install only when using /video/render endpoint.
+#   NOTE: The Presentation Agent pipeline uses edge-tts (above) and works
+#   out of the box — these are only needed for the /video/render endpoint.
 #
-# AI video generation (zeroscope_v2 / modelscope; set VIDEO_MODEL env var):
+# AI video generation (VIDEO_MODEL=zeroscope_v2 or modelscope env var):
 #   pip install diffusers modelscope imageio
 # =============================================================================
