@@ -120,6 +120,14 @@ export function sanitizeMermaidSource(source: string): string {
     }
   }
 
+  // Non-flowchart diagrams (erDiagram, sequenceDiagram, classDiagram, etc.) must not
+  // undergo flowchart edge-rewriting, which corrupts ER relationships like `A ||--o{ B`.
+  const firstLine = cleaned.split('\n')[0].trim().toLowerCase();
+  const isFlowchart = firstLine.startsWith('graph') || firstLine.startsWith('flowchart');
+  if (!isFlowchart) {
+    return cleaned;
+  }
+
   return cleaned
     .split('\n')
     .map((line) => {
@@ -215,39 +223,171 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-async function downloadSvg(svgElement: SVGSVGElement, filename: string) {
+export async function downloadDiagramAsPng(
+  svgElement: SVGSVGElement,
+  title: string,
+  customFilename?: string
+) {
+  if (!svgElement) return;
+
+  const displayTitle = title
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+
+  const cleanFilename =
+    customFilename || `${displayTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}.png`;
+
+  let width = 0;
+  let height = 0;
+
+  try {
+    const bbox = svgElement.getBBox();
+    if (bbox.width > 0 && bbox.height > 0) {
+      width = Math.ceil(bbox.width + 40);
+      height = Math.ceil(bbox.height + 40);
+    }
+  } catch {
+    // getBBox fallback
+  }
+
+  if (!width || !height) {
+    const viewBox = svgElement.getAttribute('viewBox');
+    if (viewBox) {
+      const parts = viewBox.split(/[\s,]+/).map(Number);
+      if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+        width = Math.ceil(parts[2]);
+        height = Math.ceil(parts[3]);
+      }
+    }
+  }
+
+  if (!width || width < 100) width = Math.max(svgElement.clientWidth || 900, 900);
+  if (!height || height < 100) height = Math.max(svgElement.clientHeight || 600, 600);
+
   const clone = svgElement.cloneNode(true) as SVGSVGElement;
-  // Ensure proper namespace
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-  const serializer = new XMLSerializer();
-  const svgStr = serializer.serializeToString(clone);
-  const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-  downloadBlob(blob, filename);
-}
+  clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+  clone.setAttribute('width', width.toString());
+  clone.setAttribute('height', height.toString());
 
-async function downloadPng(svgElement: SVGSVGElement, filename: string) {
-  const svgData = new XMLSerializer().serializeToString(svgElement);
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+  const origElements = Array.from(svgElement.querySelectorAll('*'));
+  const cloneElements = Array.from(clone.querySelectorAll('*'));
 
-  const img = document.createElement('img');
-  const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(svgBlob);
+  for (let i = 0; i < origElements.length && i < cloneElements.length; i++) {
+    const orig = origElements[i] as HTMLElement | SVGElement;
+    const cln = cloneElements[i] as HTMLElement | SVGElement;
+    try {
+      const cs = window.getComputedStyle(orig);
+      if (cs.fill && cs.fill !== 'none' && !cln.hasAttribute('fill')) {
+        cln.setAttribute('fill', cs.fill);
+      }
+      if (cs.stroke && cs.stroke !== 'none' && !cln.hasAttribute('stroke')) {
+        cln.setAttribute('stroke', cs.stroke);
+      }
+      if (cs.strokeWidth && !cln.hasAttribute('stroke-width')) {
+        cln.setAttribute('stroke-width', cs.strokeWidth);
+      }
+      if (cs.fontSize && !cln.hasAttribute('font-size')) {
+        cln.setAttribute('font-size', cs.fontSize);
+      }
+      if (cs.fontFamily && !cln.hasAttribute('font-family')) {
+        cln.setAttribute('font-family', cs.fontFamily);
+      }
+    } catch {
+      // Ignore unstylable nodes
+    }
+  }
+
+  const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  styleEl.textContent = `
+    text { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif !important; fill: #F0F0F0 !important; }
+    .node rect, .node circle, .node polygon, .actor { fill: #1E1E2A !important; stroke: #FFE600 !important; }
+    .edgePath path, .actor-line, line { stroke: #FFE600 !important; stroke-width: 2px !important; }
+    .label text, .nodeLabel, span { fill: #F0F0F0 !important; color: #F0F0F0 !important; }
+  `;
+  clone.insertBefore(styleEl, clone.firstChild);
+
+  const xmlStr = new XMLSerializer().serializeToString(clone);
+  const base64Data = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(xmlStr)));
+
+  const img = new window.Image();
+  img.crossOrigin = 'anonymous';
 
   img.onload = () => {
-    canvas.width = img.width * 2;
-    canvas.height = img.height * 2;
-    ctx.scale(2, 2);
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0);
-    URL.revokeObjectURL(url);
-    canvas.toBlob((blob) => {
-      if (blob) downloadBlob(blob, filename);
-    }, 'image/png');
+    const scale = 2;
+    const headerHeight = 85;
+    const padding = 32;
+    const contentWidth = Math.max(width, 700);
+
+    const totalWidth = contentWidth + padding * 2;
+    const totalHeight = height + headerHeight + padding * 2;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = totalWidth * scale;
+    canvas.height = totalHeight * scale;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.scale(scale, scale);
+
+    // Dark Background Fill (#12121A)
+    ctx.fillStyle = '#12121A';
+    ctx.fillRect(0, 0, totalWidth, totalHeight);
+
+    // Outer Border Box
+    ctx.strokeStyle = '#262634';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(padding / 2, padding / 2, totalWidth - padding, totalHeight - padding);
+
+    // Top EY Gold Accent Bar (#FFE600)
+    ctx.fillStyle = '#FFE600';
+    ctx.fillRect(padding / 2, padding / 2, totalWidth - padding, 4);
+
+    // Diagram Heading Title
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 20px ui-sans-serif, system-ui, -apple-system, sans-serif';
+    ctx.fillText(displayTitle, padding, padding + 28);
+
+    // Platform Subtitle Branding
+    ctx.fillStyle = '#8E8EA0';
+    ctx.font = '12px ui-sans-serif, system-ui, -apple-system, sans-serif';
+    ctx.fillText('Solution Architecture Diagram · AI SDLC Platform', padding, padding + 50);
+
+    // Divider Line
+    ctx.strokeStyle = '#262634';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padding, padding + 64);
+    ctx.lineTo(totalWidth - padding, padding + 64);
+    ctx.stroke();
+
+    // Draw Diagram Image
+    const dx = padding + (contentWidth - width) / 2;
+    const dy = padding + headerHeight;
+    ctx.drawImage(img, dx, dy, width, height);
+
+    try {
+      const dataUrl = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = cleanFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      canvas.toBlob((blob) => {
+        if (blob) downloadBlob(blob, cleanFilename);
+      }, 'image/png');
+    }
   };
-  img.src = url;
+
+  img.onerror = (err) => {
+    console.error('Failed to load base64 SVG for PNG download:', err);
+  };
+
+  img.src = base64Data;
 }
 
 function downloadSource(source: string, filename: string) {
@@ -287,14 +427,9 @@ function DiagramCard({
     if (svg) onEnlarge(svg as SVGSVGElement, diagram.type, diagram.content);
   };
 
-  const handleDownloadSvg = () => {
-    const svg = svgRef.current?.querySelector('svg');
-    if (svg) downloadSvg(svg as SVGSVGElement, `diagram_${diagram.type}.svg`);
-  };
-
   const handleDownloadPng = () => {
     const svg = svgRef.current?.querySelector('svg');
-    if (svg) downloadPng(svg as SVGSVGElement, `diagram_${diagram.type}.png`);
+    if (svg) downloadDiagramAsPng(svg as SVGSVGElement, diagram.type, `diagram_${diagram.type}.png`);
   };
 
   const handleDownloadSource = () => {
@@ -318,20 +453,13 @@ function DiagramCard({
             <Maximize2 className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={handleDownloadSvg}
-            disabled={!rendered}
-            className="p-1 rounded hover:bg-dark-surface text-text-muted hover:text-ey-yellow transition-colors disabled:opacity-30"
-            title="Download SVG"
-          >
-            <FileCode className="h-3.5 w-3.5" />
-          </button>
-          <button
             onClick={handleDownloadPng}
             disabled={!rendered}
-            className="p-1 rounded hover:bg-dark-surface text-text-muted hover:text-ey-yellow transition-colors disabled:opacity-30"
+            className="px-2 py-1 rounded bg-ey-yellow/10 hover:bg-ey-yellow text-ey-yellow hover:text-dark-bg font-bold transition-all disabled:opacity-30 flex items-center gap-1 text-[11px] cursor-pointer"
             title="Download PNG"
           >
             <Image className="h-3.5 w-3.5" />
+            <span>PNG</span>
           </button>
           <button
             onClick={handleDownloadSource}
@@ -391,14 +519,9 @@ function EnlargedModal({
     containerRef.current.appendChild(clone);
   }, [svgElement]);
 
-  const handleDownloadSvg = () => {
-    const svg = containerRef.current?.querySelector('svg');
-    if (svg) downloadSvg(svg as SVGSVGElement, `diagram_${title}.svg`);
-  };
-
   const handleDownloadPng = () => {
     const svg = containerRef.current?.querySelector('svg');
-    if (svg) downloadPng(svg as SVGSVGElement, `diagram_${title}.png`);
+    if (svg) downloadDiagramAsPng(svg as SVGSVGElement, title, `diagram_${title}.png`);
   };
 
   const handleDownloadSource = () => {
@@ -418,16 +541,11 @@ function EnlargedModal({
           </h3>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleDownloadSvg}
-              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] text-text-muted hover:text-ey-yellow hover:bg-dark-bg transition-colors"
-            >
-              <FileCode className="h-3 w-3" /> SVG
-            </button>
-            <button
               onClick={handleDownloadPng}
-              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] text-text-muted hover:text-ey-yellow hover:bg-dark-bg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ey-yellow hover:bg-ey-yellow/90 text-dark-bg font-bold text-xs transition-colors shadow cursor-pointer"
             >
-              <Image className="h-3 w-3" /> PNG
+              <Image className="h-3.5 w-3.5" />
+              <span>Download PNG</span>
             </button>
             <button
               onClick={handleDownloadSource}

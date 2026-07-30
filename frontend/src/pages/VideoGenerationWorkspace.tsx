@@ -4,7 +4,7 @@ import { useProjectArtifacts } from '../lib/useProjectArtifacts';
 import { getSelectedProjectId } from '../lib/projectContext';
 import { useToast } from '../components/ui/Toast';
 import {
-  Video, Play, Pause, Download, Mic, Clock, CheckCircle2, AlertTriangle,
+  Video, Play, Pause, Download, Mic, Clock, CheckCircle2, AlertTriangle, AlertCircle,
   Loader2, Volume2, Monitor, Palette, ChevronLeft, ChevronRight, Plus,
   Trash2, Copy, Type, Quote, BarChart3, Columns, Presentation,
   Sparkles, RefreshCw, Activity, User, X,
@@ -33,6 +33,7 @@ interface Slide {
   layout: SlideLayout;
   duration: number;
   diagram_image?: string;
+  page_image?: string;
 }
 
 interface StoryboardFrame {
@@ -475,8 +476,18 @@ function SlideCanvas({ slide, themeId, slideNum, total, editing, onUpdate }: {
           <span style={{ color: theme.muted, fontSize: 18 }}>{slideNum} / {total}</span>
         </div>
 
-        {/* Main content area */}
-        {isTitle ? (
+        {/* Main content area: True WYSIWYG Original Document View */}
+        {(() => {
+          const hasImage = Boolean(slide.page_image || slide.diagram_image);
+          const branch = (hasImage && !editing) ? "IMAGE_BRANCH (WYSIWYG <img> mounted)" : (isTitle ? "TITLE_TEMPLATE" : "CONTENT_TEMPLATE");
+          console.log(`[DEBUG_FRONTEND] SlideCanvas #${slideNum} (${slide.title}): editing=${editing}, page_image_exists=${Boolean(slide.page_image)}, len=${slide.page_image?.length || 0}, diagram_image_exists=${Boolean(slide.diagram_image)}, len=${slide.diagram_image?.length || 0}, rendering_branch=${branch}`);
+          return null;
+        })()}
+        {(slide.page_image || slide.diagram_image) && !editing ? (
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#1A1A24', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20 }}>
+            <img src={slide.page_image || slide.diagram_image} alt={slide.title} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </div>
+        ) : isTitle ? (
           /* Cover slide — full-bleed charcoal with yellow title */
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: CHAR, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: STRIPE_W + GUTTER, paddingRight: GUTTER * 2 }}>
             <div style={{ width: 80, height: 6, backgroundColor: ACCENT, marginBottom: 48 }} />
@@ -675,20 +686,26 @@ function SlideThumbnail({ slide, themeId, slideNum, total, active, onClick }: {
   return (
     <button onClick={onClick} className="w-full" style={{ outline: active ? `3px solid ${theme.accent}` : '2px solid transparent', borderRadius: 5, overflow: 'hidden', transition: 'outline 0.1s' }}>
       <div style={{ width: '100%', aspectRatio: '16/9', backgroundColor: dark ? theme.header : theme.bg, position: 'relative' }}>
-        {/* Yellow left stripe */}
-        <div style={{ position: 'absolute', top: 0, left: 0, width: 4, bottom: 0, backgroundColor: theme.accent }} />
-        {/* Header bar */}
-        <div style={{ position: 'absolute', top: 0, left: 4, right: 0, height: dark ? 0 : 18, backgroundColor: theme.header }} />
-        {/* Footer */}
-        <div style={{ position: 'absolute', bottom: 0, left: 4, right: 0, height: 10, backgroundColor: theme.header }} />
-        {/* Yellow accent line under header (content slides) */}
-        {!dark && <div style={{ position: 'absolute', top: 22, left: 8, width: 14, height: 2, backgroundColor: theme.accent }} />}
-        {/* Title text */}
-        <div style={{ position: 'absolute', top: dark ? '30%' : 22, left: 8, right: 10, overflow: 'hidden' }}>
-          <div style={{ fontWeight: 700, fontSize: 8, lineHeight: 1.2, color: dark ? '#FFFFFF' : theme.title, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{slide.title || `Slide ${slideNum}`}</div>
-          {!dark && <div style={{ fontSize: 6.5, color: theme.body, marginTop: 3, overflow: 'hidden', height: 20, lineHeight: 1.4 }}>{slide.content?.slice(0, 55)}</div>}
-        </div>
-        <div style={{ position: 'absolute', bottom: 2, right: 5, fontSize: 6, color: theme.muted }}>{slideNum}</div>
+        {slide.page_image || slide.diagram_image ? (
+          <img src={slide.page_image || slide.diagram_image} alt={slide.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <>
+            {/* Yellow left stripe */}
+            <div style={{ position: 'absolute', top: 0, left: 0, width: 4, bottom: 0, backgroundColor: theme.accent }} />
+            {/* Header bar */}
+            <div style={{ position: 'absolute', top: 0, left: 4, right: 0, height: dark ? 0 : 18, backgroundColor: theme.header }} />
+            {/* Footer */}
+            <div style={{ position: 'absolute', bottom: 0, left: 4, right: 0, height: 10, backgroundColor: theme.header }} />
+            {/* Yellow accent line under header (content slides) */}
+            {!dark && <div style={{ position: 'absolute', top: 22, left: 8, width: 14, height: 2, backgroundColor: theme.accent }} />}
+            {/* Title text */}
+            <div style={{ position: 'absolute', top: dark ? '30%' : 22, left: 8, right: 10, overflow: 'hidden' }}>
+              <div style={{ fontWeight: 700, fontSize: 8, lineHeight: 1.2, color: dark ? '#FFFFFF' : theme.title, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{slide.title || `Slide ${slideNum}`}</div>
+              {!dark && <div style={{ fontSize: 6.5, color: theme.body, marginTop: 3, overflow: 'hidden', height: 20, lineHeight: 1.4 }}>{slide.content?.slice(0, 55)}</div>}
+            </div>
+            <div style={{ position: 'absolute', bottom: 2, right: 5, fontSize: 6, color: theme.muted }}>{slideNum}</div>
+          </>
+        )}
       </div>
     </button>
   );
@@ -1003,6 +1020,9 @@ export function VideoGenerationWorkspace() {
   const [showExport, setShowExport] = useState(false);
   const [showDiagram, setShowDiagram] = useState(false);
   const [showScript, setShowScript] = useState(false);
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [rawScriptInput, setRawScriptInput] = useState('');
+  const [splittingLoading, setSplittingLoading] = useState(false);
   const [scriptNotesMap, setScriptNotesMap] = useState<Record<number, string>>({});
   const [initialScriptNotesMap, setInitialScriptNotesMap] = useState<Record<number, string>>({});
   const [lastScriptSavedTime, setLastScriptSavedTime] = useState<string | null>(null);
@@ -1022,6 +1042,69 @@ export function VideoGenerationWorkspace() {
   // extracted text from scratch. Cleared whenever the deck's source
   // changes to something else (PDF import, starting from scratch).
   const [sourcePptxPath, setSourcePptxPath] = useState<string | null>(null);
+
+  // ── Document Attachment State (User selects file first; generation starts only on explicit click) ──
+  interface AttachedDocInfo {
+    file: File;
+    type: 'pdf' | 'pptx';
+    name: string;
+    sizeFormatted: string;
+  }
+
+  const [attachedDoc, setAttachedDoc] = useState<AttachedDocInfo | null>(null);
+  const [pendingReplaceFile, setPendingReplaceFile] = useState<{ file: File; type: 'pdf' | 'pptx' } | null>(null);
+  const [showReplaceConfirmModal, setShowReplaceConfirmModal] = useState(false);
+  const [parsingProgressStep, setParsingProgressStep] = useState<string | null>(null);
+
+  // ── Document Attachment Handlers ──────────────────────────────────────────
+  const handleFilePicked = useCallback((file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    const type: 'pdf' | 'pptx' | null = ext === 'pdf' ? 'pdf' : (ext === 'pptx' ? 'pptx' : null);
+    if (!type) {
+      addToast('Only PDF and PPTX files are supported', 'error');
+      return;
+    }
+
+    if (attachedDoc) {
+      setPendingReplaceFile({ file, type });
+      setShowReplaceConfirmModal(true);
+    } else {
+      const sizeFormatted = file.size < 1024 * 1024
+        ? `${(file.size / 1024).toFixed(1)} KB`
+        : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+      setAttachedDoc({ file, type, name: file.name, sizeFormatted });
+      addToast(`Attached ${file.name}`, 'info');
+    }
+  }, [attachedDoc, addToast]);
+
+  const confirmReplacement = useCallback(() => {
+    if (pendingReplaceFile) {
+      const { file, type } = pendingReplaceFile;
+      const sizeFormatted = file.size < 1024 * 1024
+        ? `${(file.size / 1024).toFixed(1)} KB`
+        : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+      setAttachedDoc({ file, type, name: file.name, sizeFormatted });
+      addToast(`Replaced attachment with ${file.name}`, 'info');
+    }
+    setPendingReplaceFile(null);
+    setShowReplaceConfirmModal(false);
+    if (pdfInputRef.current) pdfInputRef.current.value = '';
+    if (pptxInputRef.current) pptxInputRef.current.value = '';
+  }, [pendingReplaceFile, addToast]);
+
+  const cancelReplacement = useCallback(() => {
+    setPendingReplaceFile(null);
+    setShowReplaceConfirmModal(false);
+    if (pdfInputRef.current) pdfInputRef.current.value = '';
+    if (pptxInputRef.current) pptxInputRef.current.value = '';
+  }, []);
+
+  const removeAttachment = useCallback(() => {
+    setAttachedDoc(null);
+    if (pdfInputRef.current) pdfInputRef.current.value = '';
+    if (pptxInputRef.current) pptxInputRef.current.value = '';
+    addToast('Attachment removed', 'info');
+  }, [addToast]);
 
   // ── Presenter availability (real backend probe, not a post-render guess) ──
   const [presenterStatus, setPresenterStatus] = useState<Record<string, { available: boolean; message: string }>>({
@@ -1087,6 +1170,8 @@ export function VideoGenerationWorkspace() {
             speaker_notes: typeof s.speaker_notes === 'string' ? s.speaker_notes : (s.narration || s.notes || ''),
             layout: (s.layout || (i === 0 ? 'title' : 'content')) as SlideLayout,
             duration: s.duration || 30,
+            page_image: s.page_image,
+            diagram_image: s.diagram_image,
           }));
           hasLoadedDbRef.current = true;
           dispatch({ type: 'SET', slides: dbSlides });
@@ -1109,6 +1194,7 @@ export function VideoGenerationWorkspace() {
               id: s.id || String(i), title: s.title || '', subtitle: s.subtitle || '',
               content: s.content || s.body || '', speaker_notes: typeof s.speaker_notes === 'string' ? s.speaker_notes : (s.narration || ''),
               layout: (s.layout || (i === 0 ? 'title' : 'content')) as SlideLayout, duration: s.duration || 30,
+              page_image: s.page_image, diagram_image: s.diagram_image,
             }));
           } else if (data.slide_outline?.length) {
             const notes: Record<number, string> = {};
@@ -1118,6 +1204,7 @@ export function VideoGenerationWorkspace() {
               content: (item.key_points || []).map((p: string) => `• ${p}`).join('\n'),
               speaker_notes: notes[item.slide_number || i + 1] || '',
               layout: (i === 0 ? 'title' : item.slide_type || 'content') as SlideLayout, duration: 30,
+              page_image: item.page_image, diagram_image: item.diagram_image,
             }));
           }
           if (rawSlides.length > 0 && isMounted) {
@@ -1226,7 +1313,7 @@ export function VideoGenerationWorkspace() {
   const openScriptEditor = useCallback(() => {
     const map: Record<number, string> = {};
     slides.forEach((s, i) => {
-      map[i] = typeof s.speaker_notes === 'string' ? s.speaker_notes : (s.narration || '');
+      map[i] = typeof s.speaker_notes === 'string' ? s.speaker_notes : '';
     });
     setScriptNotesMap(map);
     setInitialScriptNotesMap({ ...map });
@@ -1236,6 +1323,83 @@ export function VideoGenerationWorkspace() {
   const updateScriptNote = useCallback((idx: number, text: string) => {
     setScriptNotesMap(prev => ({ ...prev, [idx]: text }));
   }, []);
+
+  // ── AI Auto-Split Complete Script Allocator ─────────────────────────────────
+  const autoSplitAndMapScript = useCallback(async () => {
+    const raw = rawScriptInput.trim();
+    if (!raw) {
+      addToast('Please paste a complete narration script first.', 'error');
+      return;
+    }
+
+    setSplittingLoading(true);
+    try {
+      let mapped: Record<number, string> = {};
+
+      if (projectId) {
+        try {
+          const res = await fastApiRequest<{ success: boolean; mapped_notes: Record<string, string> }>(
+            `/projects/${projectId}/presentation/split-script`,
+            {
+              method: 'POST',
+              body: { raw_script: raw, slides },
+            }
+          );
+          if (res.success && res.mapped_notes) {
+            Object.entries(res.mapped_notes).forEach(([k, v]) => {
+              mapped[Number(k)] = v;
+            });
+          }
+        } catch (e) {
+          console.warn('Backend script splitting API failed, using client-side allocator:', e);
+        }
+      }
+
+      // Fallback client-side smart allocator if backend mapped is empty
+      if (Object.keys(mapped).length === 0) {
+        const markerRegex = /(?:^|\n)\s*(?:===|\[)?\s*(?:Slide|Page|Part)\s*(\d+)[:\s\-\•\.\=]*[^\n]*/gi;
+        const matches = Array.from(raw.matchAll(markerRegex));
+        if (matches.length > 0) {
+          matches.forEach((m, idx) => {
+            const slideNum = parseInt(m[1], 10) - 1;
+            const startPos = m.index! + m[0].length;
+            const endPos = idx + 1 < matches.length ? matches[idx + 1].index! : raw.length;
+            const text = raw.substring(startPos, endPos).trim();
+            if (slideNum >= 0 && slideNum < slides.length) {
+              mapped[slideNum] = text;
+            }
+          });
+        } else {
+          const paragraphs = raw.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+          paragraphs.forEach((p, idx) => {
+            if (idx < slides.length) {
+              mapped[idx] = p;
+            }
+          });
+        }
+      }
+
+      // Populate draft scriptNotesMap without saving automatically
+      setScriptNotesMap(prev => {
+        const next = { ...prev };
+        slides.forEach((_, i) => {
+          if (mapped[i] !== undefined) {
+            next[i] = mapped[i];
+          }
+        });
+        return next;
+      });
+
+      setShowPasteModal(false);
+      const count = Object.keys(mapped).length;
+      addToast(`✔ AI mapped narration across ${count} slides as drafts. Review your slides and click 'Save Voice-over' to persist.`, 'success');
+    } catch (err) {
+      console.error('Failed to map script:', err);
+      addToast('Failed to map narration script', 'error');
+    } finally {
+      setSplittingLoading(false);
+    }
+  }, [rawScriptInput, slides, projectId, addToast]);
 
   const saveScriptEditor = useCallback(async () => {
     const updatedSlides = slides.map((s, i) => ({
@@ -1515,11 +1679,20 @@ export function VideoGenerationWorkspace() {
           subtitle: s.subtitle || '', content: s.content || '',
           speaker_notes: s.speaker_notes || '', layout: s.layout || 'content',
           duration: s.duration || 30,
+          page_image: s.page_image,
+          diagram_image: s.diagram_image,
         }));
         setSlides(asSlides);
         setActiveIdx(0);
         setSelectedSlideIndices(null); // default to "all selected"; user narrows from here
-        if (projectId) localStorage.setItem(`slides_${projectId}`, JSON.stringify(asSlides));
+        hasLoadedDbRef.current = true;
+        if (projectId) {
+          localStorage.setItem(`slides_${projectId}`, JSON.stringify(asSlides));
+          fastApiRequest<{ success: boolean }>(`/projects/${projectId}/presentation/script`, {
+            method: 'POST',
+            body: { slides: asSlides },
+          }).catch(err => console.error('[PdfImport] Failed to persist slides to DB:', err));
+        }
       }
       // The PDF is now imported into editable slides — reset pdf-attach state
       // so the Generate button goes back to its normal (already-loaded-slides)
@@ -1554,14 +1727,23 @@ export function VideoGenerationWorkspace() {
         subtitle: s.subtitle || '', content: s.content || '',
         speaker_notes: s.speaker_notes || '', layout: s.layout || 'content',
         duration: s.duration || 25,
+        page_image: s.page_image,
+        diagram_image: s.diagram_image,
       }));
       setSlides(asSlides);
       setActiveIdx(0);
+      hasLoadedDbRef.current = true;
       // Persisted server-side by /video/import-pptx — carrying this into
       // /video/render makes the render use this deck's own original
       // artwork instead of a re-themed rebuild from the extracted text.
       setSourcePptxPath(data.pptx_path ?? null);
-      if (projectId) localStorage.setItem(`slides_${projectId}`, JSON.stringify(asSlides));
+      if (projectId) {
+        localStorage.setItem(`slides_${projectId}`, JSON.stringify(asSlides));
+        fastApiRequest<{ success: boolean }>(`/projects/${projectId}/presentation/script`, {
+          method: 'POST',
+          body: { slides: asSlides },
+        }).catch(err => console.error('[PptxImport] Failed to persist slides to DB:', err));
+      }
       setShowGenerateModal(false);
       addToast(
         data.pptx_path
@@ -1637,6 +1819,153 @@ export function VideoGenerationWorkspace() {
     }
   }, [projectId, selectedSlides, selectedSlideIndices, sourcePptxPath, videoMode, themeId, voiceId, voiceSpeed, voicePitch, voiceVolume, voiceEmotion, presenterType, presenterPosition, narrationStyle, voicePause, voiceEmphasis, resolution, fps, captions, cameraMotion, animationsEnabled, transitionStyle, generateSubtitleFiles, selectedAvatar, genMode, addToast]);
 
+  // ── Unified Generation Trigger (Runs upload & parsing ONLY on explicit Generate click) ──
+  const handleStartGenerate = useCallback(async () => {
+    if (attachedDoc) {
+      setParsingProgressStep('Uploading document…');
+      try {
+        if (attachedDoc.type === 'pdf') {
+          setPdfFile(attachedDoc.file);
+          setPdfMode(true);
+          setParsingProgressStep('Parsing PDF & generating high-resolution slide previews…');
+          await startPdfRender(attachedDoc.file);
+        } else if (attachedDoc.type === 'pptx') {
+          setParsingProgressStep('Rasterizing PowerPoint presentation…');
+          await handleImportPptx(attachedDoc.file);
+        }
+        setParsingProgressStep('Preparing workspace…');
+        setAttachedDoc(null);
+      } catch (e) {
+        addToast(e instanceof Error ? e.message : 'Failed to process document', 'error');
+      } finally {
+        setParsingProgressStep(null);
+      }
+    } else {
+      if (slides.length === 0) {
+        setSlides(getDefaultSlides());
+        setSourcePptxPath(null);
+        setShowGenerateModal(false);
+      } else {
+        startRender();
+      }
+    }
+  }, [attachedDoc, slides.length, startPdfRender, handleImportPptx, startRender, addToast]);
+
+  const renderAttachmentCard = () => {
+    if (!attachedDoc) return null;
+    const isPdf = attachedDoc.type === 'pdf';
+    return (
+      <div className="rounded-xl border border-ey-yellow/40 bg-dark-bg p-4 transition-all shadow-md">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-3 rounded-xl bg-ey-yellow/10 border border-ey-yellow/20 flex-shrink-0">
+              {isPdf ? (
+                <FileText className="h-6 w-6 text-ey-yellow" />
+              ) : (
+                <Presentation className="h-6 w-6 text-ey-yellow" />
+              )}
+            </div>
+            <div className="min-w-0 text-left">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-text-primary truncate" title={attachedDoc.name}>
+                  {attachedDoc.name}
+                </span>
+                <span className="text-[10px] font-bold text-ey-yellow bg-ey-yellow/10 px-2 py-0.5 rounded-full border border-ey-yellow/20 uppercase flex-shrink-0">
+                  {attachedDoc.type.toUpperCase()}
+                </span>
+              </div>
+              <p className="text-xs text-text-muted mt-0.5">
+                {isPdf ? 'PDF Document' : 'PowerPoint Presentation'} • {attachedDoc.sizeFormatted}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={removeAttachment}
+            disabled={pdfImporting || pptxImporting}
+            className="p-1.5 rounded-lg text-text-muted hover:text-status-error hover:bg-dark-border transition-colors flex-shrink-0 disabled:opacity-30"
+            title="Remove attachment"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mt-3 pt-2.5 border-t border-dark-border/60 flex items-center justify-between text-xs">
+          <span className="flex items-center gap-1.5 text-status-success font-semibold">
+            <Check className="h-4 w-4 text-status-success" />
+            Attached: {attachedDoc.name}
+          </span>
+          <label className="text-ey-yellow hover:underline text-xs cursor-pointer font-medium">
+            Change File
+            <input
+              type="file"
+              accept={isPdf ? '.pdf' : '.pptx'}
+              className="sr-only"
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) handleFilePicked(f);
+                e.target.value = '';
+              }}
+            />
+          </label>
+        </div>
+      </div>
+    );
+  };
+
+  const renderReplaceConfirmModal = () => {
+    if (!showReplaceConfirmModal || !pendingReplaceFile) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div className="w-full max-w-md rounded-2xl border border-dark-border bg-dark-card p-6 shadow-2xl space-y-4 text-left">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-xl bg-status-warning/10 text-status-warning border border-status-warning/20">
+              <AlertCircle className="h-6 w-6 text-status-warning" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-text-primary">Replace Currently Attached Document?</h3>
+              <p className="text-xs text-text-muted mt-0.5">Only one primary document can be attached for generation at a time.</p>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-dark-bg p-3.5 border border-dark-border text-xs space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-text-muted flex-shrink-0">Currently Attached:</span>
+              <span className="font-semibold text-text-primary truncate max-w-[200px]" title={attachedDoc?.name}>
+                {attachedDoc?.name}
+              </span>
+            </div>
+            <div className="h-px bg-dark-border/60" />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-text-muted flex-shrink-0">New Document:</span>
+              <span className="font-semibold text-ey-yellow truncate max-w-[200px]" title={pendingReplaceFile.file.name}>
+                {pendingReplaceFile.file.name}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={cancelReplacement}
+              className="btn-secondary text-xs px-4 py-2"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmReplacement}
+              className="btn-primary text-xs px-4 py-2"
+            >
+              Replace Document
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const activeSlide = slides[activeIdx];
   const theme = THEMES[themeId];
   // Prefer the AI Avatar (lip-synced) artifact over the plain narrated
@@ -1656,27 +1985,66 @@ export function VideoGenerationWorkspace() {
   // PDF-generation and PPTX-import equal, prominent top-level entry points
   // instead of burying them inside the Generate modal.
   if (slides.length === 0) return (
-    <div className="flex h-full flex-col items-center justify-center gap-6 py-24 text-center">
+    <div className="flex h-full flex-col items-center justify-center gap-6 py-24 text-center max-w-xl mx-auto px-4">
       <Film className="h-12 w-12 text-ey-yellow" />
       <div>
         <h2 className="text-xl font-bold text-text-primary">Start a Presentation</h2>
-        <p className="text-sm text-text-muted mt-1">Generate slides from a PDF, import an existing deck, or start from scratch.</p>
+        <p className="text-sm text-text-muted mt-1">
+          Attach a PDF or PowerPoint deck to generate slides, or start from scratch.
+        </p>
       </div>
-      <div className="flex items-center gap-4">
-        <label className="btn-primary flex items-center gap-2 cursor-pointer">
-          {pdfImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-          Generate from PDF
-          <input type="file" accept=".pdf" className="sr-only"
-            onChange={e => { const f = e.target.files?.[0] || null; if (f) { setPdfFile(f); setPdfMode(true); startPdfRender(f); } }} />
-        </label>
-        <label className="btn-secondary flex items-center gap-2 cursor-pointer">
-          {pptxImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Presentation className="h-4 w-4" />}
-          Import PPTX
-          <input type="file" accept=".pptx" className="sr-only"
-            onChange={e => { const f = e.target.files?.[0] || null; if (f) handleImportPptx(f); }} />
-        </label>
-        <button onClick={() => { setSlides(getDefaultSlides()); setSourcePptxPath(null); }} className="btn-ghost text-sm">Start from scratch</button>
-      </div>
+
+      {attachedDoc ? (
+        <div className="w-full text-left space-y-4">
+          {renderAttachmentCard()}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleStartGenerate}
+              disabled={pdfImporting || pptxImporting}
+              className="btn-primary flex-1 flex items-center justify-center gap-2 py-2.5 text-sm"
+            >
+              {pdfImporting || pptxImporting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin text-dark-bg" />
+                  <span>{parsingProgressStep || 'Processing Document…'}</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  <span>Generate Presentation</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={removeAttachment}
+              disabled={pdfImporting || pptxImporting}
+              className="btn-secondary text-sm px-4 py-2.5"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-4">
+          <label className="btn-primary flex items-center gap-2 cursor-pointer">
+            <FileText className="h-4 w-4" />
+            Attach PDF
+            <input type="file" accept=".pdf" className="sr-only"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFilePicked(f); e.target.value = ''; }} />
+          </label>
+          <label className="btn-secondary flex items-center gap-2 cursor-pointer">
+            <Presentation className="h-4 w-4" />
+            Attach PPTX
+            <input type="file" accept=".pptx" className="sr-only"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFilePicked(f); e.target.value = ''; }} />
+          </label>
+          <button onClick={() => { setSlides(getDefaultSlides()); setSourcePptxPath(null); }} className="btn-ghost text-sm">
+            Start from scratch
+          </button>
+        </div>
+      )}
+
+      {renderReplaceConfirmModal()}
     </div>
   );
 
@@ -2302,40 +2670,47 @@ export function VideoGenerationWorkspace() {
 
             <div className="p-6 space-y-5 overflow-y-auto max-h-[70vh]">
 
-              {/* PDF upload option — imports one slide per PDF page immediately;
-                  pick which slides to render afterward via the slide strip. */}
-              <div className="rounded-xl border-2 border-dashed border-dark-border bg-dark-bg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-ey-yellow" />
-                    <span className="text-sm font-semibold text-text-primary">Generate from PDF</span>
-                    <span className="text-xs text-text-muted bg-dark-border px-2 py-0.5 rounded-full">optional</span>
-                  </div>
-                  <label className="relative cursor-pointer">
-                    <input ref={pdfInputRef} type="file" accept=".pdf" className="sr-only"
-                      onChange={e => { const f = e.target.files?.[0] || null; if (f) startPdfRender(f); if (pdfInputRef.current) pdfInputRef.current.value = ''; }} />
-                    <span className="btn-secondary text-xs px-3 py-1.5">{pdfImporting ? 'Reading…' : 'Browse PDF'}</span>
-                  </label>
+              {/* Document Attachment Option */}
+              {attachedDoc ? (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-text-muted uppercase tracking-wider block">Attached Document</label>
+                  {renderAttachmentCard()}
                 </div>
-                <p className="text-xs text-text-muted">Upload a PDF — one slide is generated per page. Pick which page(s) to render afterward in the slide strip.</p>
-              </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {/* PDF option */}
+                  <div className="rounded-xl border-2 border-dashed border-dark-border bg-dark-bg p-4 hover:border-ey-yellow/40 transition-colors">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-ey-yellow" />
+                        <span className="text-sm font-semibold text-text-primary">PDF Document</span>
+                      </div>
+                      <label className="relative cursor-pointer">
+                        <input ref={pdfInputRef} type="file" accept=".pdf" className="sr-only"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) handleFilePicked(f); e.target.value = ''; }} />
+                        <span className="btn-secondary text-xs px-3 py-1.5">Attach PDF</span>
+                      </label>
+                    </div>
+                    <p className="text-xs text-text-muted">Attach a PDF to generate one high-resolution slide per page.</p>
+                  </div>
 
-              {/* PPTX import option */}
-              <div className="rounded-xl border-2 border-dashed border-dark-border bg-dark-bg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Presentation className="h-5 w-5 text-ey-yellow" />
-                    <span className="text-sm font-semibold text-text-primary">Import Existing PPTX</span>
-                    <span className="text-xs text-text-muted bg-dark-border px-2 py-0.5 rounded-full">optional</span>
+                  {/* PPTX option */}
+                  <div className="rounded-xl border-2 border-dashed border-dark-border bg-dark-bg p-4 hover:border-ey-yellow/40 transition-colors">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Presentation className="h-5 w-5 text-ey-yellow" />
+                        <span className="text-sm font-semibold text-text-primary">PowerPoint (.pptx)</span>
+                      </div>
+                      <label className="relative cursor-pointer">
+                        <input ref={pptxInputRef} type="file" accept=".pptx" className="sr-only"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) handleFilePicked(f); e.target.value = ''; }} />
+                        <span className="btn-secondary text-xs px-3 py-1.5">Attach PPTX</span>
+                      </label>
+                    </div>
+                    <p className="text-xs text-text-muted">Attach a .pptx deck to import slides into the editor.</p>
                   </div>
-                  <label className="relative cursor-pointer">
-                    <input ref={pptxInputRef} type="file" accept=".pptx" className="sr-only"
-                      onChange={e => { const f = e.target.files?.[0] || null; if (f) handleImportPptx(f); }} />
-                    <span className="btn-secondary text-xs px-3 py-1.5">{pptxImporting ? 'Importing…' : 'Browse PPTX'}</span>
-                  </label>
                 </div>
-                <p className="text-xs text-text-muted">Already have a deck? Upload a .pptx and its slides, notes and content load straight into the editor here so you can keep editing and render a video from it.</p>
-              </div>
+              )}
 
               {/* Gen mode */}
               <div>
@@ -2433,12 +2808,25 @@ export function VideoGenerationWorkspace() {
             <div className="flex gap-3 border-t border-dark-border px-6 py-4">
               <button onClick={() => setShowGenerateModal(false)} className="btn-secondary flex-1">Cancel</button>
               <button
-                onClick={startRender}
-                disabled={rendering || slides.length === 0 || selectedSlides.length === 0 || (hasUnsavedScriptChanges && showScript)}
-                className="btn-primary flex-1 disabled:opacity-40"
+                onClick={handleStartGenerate}
+                disabled={rendering || pdfImporting || pptxImporting || (slides.length === 0 && !attachedDoc) || (hasUnsavedScriptChanges && showScript)}
+                className="btn-primary flex-1 disabled:opacity-40 flex items-center justify-center gap-2"
               >
-                <Sparkles className="mr-2 h-4 w-4" />
-                {pdfMode ? 'Generate from PDF' : genMode==='presentation_only' ? 'Generate PPTX' : genMode==='video_only' ? 'Render Video' : 'Generate All'}
+                {pdfImporting || pptxImporting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin text-dark-bg" />
+                    <span>{parsingProgressStep || 'Processing Document…'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    <span>
+                      {attachedDoc
+                        ? `Generate from ${attachedDoc.type.toUpperCase()}`
+                        : pdfMode ? 'Generate from PDF' : genMode==='presentation_only' ? 'Generate PPTX' : genMode==='video_only' ? 'Render Video' : 'Generate All'}
+                    </span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -2468,9 +2856,19 @@ export function VideoGenerationWorkspace() {
                   Edit per-slide voice-over narration directly. Each slide is bound to its own dedicated editor card.
                 </p>
               </div>
-              <button onClick={() => setShowScript(false)} className="rounded-lg p-2 text-text-muted hover:bg-dark-bg">
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => setShowPasteModal(true)}
+                  className="flex items-center gap-1.5 rounded-xl border border-ey-yellow/50 bg-ey-yellow/10 px-3.5 py-2 text-xs font-semibold text-ey-yellow hover:bg-ey-yellow/20 transition-all shadow-sm"
+                  title="Import complete raw narration script generated from ChatGPT/LLM and auto-map to slides"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Paste Complete Script
+                </button>
+                <button onClick={() => setShowScript(false)} className="rounded-lg p-2 text-text-muted hover:bg-dark-bg">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
             <div className="p-6 space-y-4 overflow-y-auto flex-1">
@@ -2568,6 +2966,88 @@ export function VideoGenerationWorkspace() {
           </div>
         </div>
       )}
+
+      {/* 📋 Paste Complete Script AI Auto-Split Modal */}
+      {showPasteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
+          <div className="w-full max-w-2xl rounded-2xl border border-dark-border bg-dark-card shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between border-b border-dark-border px-6 py-4 bg-dark-bg/60">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-ey-yellow/10 border border-ey-yellow/30 text-ey-yellow">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-text-primary">
+                    Paste Complete Narration Script
+                  </h3>
+                  <p className="text-xs text-text-muted">
+                    AI Copilot will analyze slide titles, order, content, and keywords to map the narration into per-slide drafts.
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setShowPasteModal(false)} className="rounded-lg p-2 text-text-muted hover:bg-dark-bg">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3.5 text-xs text-text-primary flex items-start gap-2.5">
+                <Info className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold text-blue-300">How it works: </span>
+                  Paste your full narration text from ChatGPT or Word below. AI Copilot automatically splits the text across your {slides.length} slides as editable drafts. <strong>No changes are saved to the database until you click "Save Voice-over".</strong>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">
+                  Paste Full Narration Text (ChatGPT / LLM Output)
+                </label>
+                <textarea
+                  value={rawScriptInput}
+                  onChange={e => setRawScriptInput(e.target.value)}
+                  placeholder={"Paste your complete script here...\n\nExample:\nSlide 1: Welcome to our platform presentation...\n\nSlide 2: In our project architecture..."}
+                  rows={10}
+                  className="w-full rounded-xl border border-dark-border bg-dark-bg p-4 text-xs font-mono text-text-primary focus:border-ey-yellow focus:outline-none transition-all leading-relaxed shadow-inner"
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-dark-border px-6 py-4 bg-dark-bg/40 flex items-center justify-between">
+              <button
+                onClick={() => setRawScriptInput('')}
+                className="text-xs text-text-muted hover:text-status-error transition-all"
+              >
+                Clear Input
+              </button>
+              <div className="flex gap-2.5">
+                <button onClick={() => setShowPasteModal(false)} className="btn-secondary text-sm px-4">
+                  Cancel
+                </button>
+                <button
+                  onClick={autoSplitAndMapScript}
+                  disabled={splittingLoading || !rawScriptInput.trim()}
+                  className="btn-primary text-sm px-5 flex items-center gap-1.5 disabled:opacity-40"
+                >
+                  {splittingLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Analyzing & Mapping...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 text-ey-yellow" />
+                      ⚡ Auto-Map to Slides
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renderReplaceConfirmModal()}
     </div>
   );
 }

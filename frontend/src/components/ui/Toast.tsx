@@ -40,14 +40,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const addToast = useCallback((message: string, type: ToastType, duration = 4000): string => {
-    const id = `toast-${++toastIdCounter}`;
-    setToasts((prev) => [...prev, { id, message, type, duration }]);
+    let newId = '';
+    setToasts((prev) => {
+      // DEDUPLICATION: If toast with identical message is already showing, ignore
+      if (prev.some((t) => t.message === message)) {
+        return prev;
+      }
+      newId = `toast-${++toastIdCounter}`;
+      return [...prev, { id: newId, message, type, duration }];
+    });
+
     if (type !== 'loading' && duration > 0) {
       setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
+        setToasts((prev) => prev.filter((t) => t.message !== message));
       }, duration);
     }
-    return id;
+    return newId;
   }, []);
 
   const removeToast = useCallback((id: string) => {
