@@ -1,5 +1,5 @@
-const DEFAULT_API_BASE_URL = 'http://localhost:8000/api';
-const DEFAULT_FASTAPI_URL = 'http://localhost:8000';
+const DEFAULT_API_BASE_URL = '/api';
+const DEFAULT_FASTAPI_URL = '';
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/$/, '');
 export const FASTAPI_BASE_URL = (import.meta.env.VITE_FASTAPI_BASE_URL || DEFAULT_FASTAPI_URL).replace(/\/$/, '');
 
