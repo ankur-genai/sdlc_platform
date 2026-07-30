@@ -146,9 +146,18 @@ def _extract_document_text(path) -> str:
     suffix = p.suffix.lower()
     try:
         if suffix == ".pdf":
-            import pdfplumber
-            with pdfplumber.open(str(p)) as pdf:
-                return "\n\n".join((page.extract_text() or "") for page in pdf.pages)
+            try:
+                import pdfplumber
+                with pdfplumber.open(str(p)) as pdf:
+                    return "\n\n".join((page.extract_text() or "") for page in pdf.pages)
+            except Exception:
+                pass
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(str(p))
+                return "\n\n".join((page.extract_text() or "") for page in reader.pages)
+            except Exception:
+                pass
         if suffix in (".docx", ".doc"):
             import docx  # python-docx
             d = docx.Document(str(p))
@@ -335,8 +344,19 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
 
 @app.post("/auth/login", response_model=UserOut, tags=["auth"])
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> User:
-    if DEMO_MODE and payload.email.lower() == DEMO_EMAIL:
-        user = _get_or_create_demo_user(db)
+    if DEMO_MODE:
+        email = payload.email.strip().lower()
+        user = db.query(User).filter(User.email == email).first()
+        if user is None:
+            user = User(
+                email=email,
+                full_name=email.split("@")[0].capitalize() or "Demo User",
+                role="developer",
+                hashed_password=hash_password(payload.password or "DemoPassword123!"),
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
         _set_auth_cookies(response, user.id, remember=payload.remember_me)
         return user
 

@@ -561,7 +561,7 @@ async def requirements_apply_endpoint(
         if item_id not in trace_map:
             trace_map[item_id] = {
                 "requirement_id": item_id,
-                "business_goal": "Align with banking and security controls.",
+                "business_goal": "Align with domain security and quality controls.",
                 "source": "Requirement Copilot",
                 "related_requirements": []
             }
@@ -572,7 +572,7 @@ async def requirements_apply_endpoint(
         if item_id not in trace_map:
             trace_map[item_id] = {
                 "requirement_id": item_id,
-                "business_goal": "Align with banking and security controls.",
+                "business_goal": "Align with domain security and quality controls.",
                 "source": "Requirement Copilot",
                 "related_requirements": []
             }
@@ -664,6 +664,68 @@ async def regenerate_architecture_diagrams(
         "artifact_id": artifact_id,
         "count": len(diagrams),
         "diagrams": diagrams,
+    }
+
+
+@router.post("/generate/architecture-copilot", tags=["generate"])
+async def architecture_copilot_endpoint(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Process natural language user instructions for Architecture Copilot, updating components, tech stack, decisions, and diagrams."""
+    project_id = payload.get("project_id")
+    prompt = payload.get("prompt")
+    if not project_id or not prompt:
+        raise HTTPException(422, "project_id and prompt are required")
+    
+    project = _get_project_or_404(db, project_id)
+
+    arch_art = _latest_artifact(db, project_id, ArtifactType.ARCHITECTURE_DIAGRAM.value)
+    if arch_art and arch_art.content:
+        try:
+            arch_data = json.loads(arch_art.content)
+        except Exception:
+            arch_data = {}
+    else:
+        from .agents.solution_architect.agent import MOCK_ARCHITECTURE
+        arch_data = dict(MOCK_ARCHITECTURE)
+
+    from .agents.solution_architect.copilot_agent import ArchitectureCopilotAgent
+    agent = ArchitectureCopilotAgent(db=db, project_id=project_id)
+    copilot_result = agent.process_prompt(arch_data, prompt)
+
+    updated_arch = copilot_result.get("updated_architecture") or arch_data
+
+    # Auto-rebuild diagram suite matching updated architecture
+    try:
+        from .diagram_generator import build_all_diagrams
+        schema_art = _latest_artifact(db, project_id, ArtifactType.SQL_SCHEMA.value)
+        schema_data = json.loads(schema_art.content) if schema_art else {}
+        updated_arch["diagrams"] = build_all_diagrams(updated_arch, schema_data, project.name)
+    except Exception as diag_err:
+        logger.warning("[ArchitectureCopilot] Diagram rebuild warning: %s", diag_err)
+
+    # Save updated architecture artifact
+    if arch_art:
+        arch_art.content = json.dumps(updated_arch, indent=2)
+        db.add(arch_art)
+        artifact_id = arch_art.id
+    else:
+        new_art = _save_artifact(db, project_id, ArtifactType.ARCHITECTURE_DIAGRAM.value, json.dumps(updated_arch, indent=2))
+        artifact_id = new_art.id
+    db.commit()
+
+    await manager.artifact_generated(project_id, {
+        "artifact_id": artifact_id,
+        "artifact_type": ArtifactType.ARCHITECTURE_DIAGRAM.value,
+    })
+
+    return {
+        "message": copilot_result.get("message", f"Architecture updated based on prompt: '{prompt}'."),
+        "summary": copilot_result.get("summary", "Updated architecture components and diagrams."),
+        "updated_architecture": updated_arch,
+        "affected_sections": copilot_result.get("affected_sections", ["tech_stack", "components", "diagrams"])
     }
 
 
@@ -3605,4 +3667,44 @@ def update_brd_pdf_status(
         db.add(status_art)
     db.commit()
     return {"project_id": project_id, "status": new_status}
+
+
+@router.get("/generate/architecture-pdf", tags=["generate"])
+@router.post("/generate/architecture-pdf", tags=["generate"])
+def generate_architecture_pdf_endpoint(
+    project_id: Optional[Any] = Query(None, alias="projectId"),
+    payload: Optional[dict] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    raw_pid = project_id or (payload.get("project_id") if payload else None)
+    pid = None
+    if raw_pid:
+        try:
+            pid = int(raw_pid)
+        except (ValueError, TypeError):
+            pid = None
+
+    if not pid:
+        first_proj = db.query(Project).first()
+        if first_proj:
+            pid = first_proj.id
+        else:
+            raise HTTPException(422, "project_id required")
+
+    proj = _get_project_or_404(db, pid)
+
+    from .pdf_generator import generate_architecture_pdf
+    pdf_buf = generate_architecture_pdf(pid, db)
+
+    safe_name = "".join(c if c.isalnum() else "_" for c in proj.name or "Project")
+    filename = f"{safe_name}_Architecture_Design_Report.pdf"
+    return StreamingResponse(
+        pdf_buf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+    )
 

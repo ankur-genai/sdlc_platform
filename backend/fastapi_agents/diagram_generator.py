@@ -276,8 +276,10 @@ def gen_er(schema: Dict[str, Any]) -> str:
         lines.append(f"  {tname} {{")
         for col in (t.get("columns") or [])[:14]:
             ctype = re.sub(r"[^A-Za-z0-9]", "", str(col.get("type", "string")).split("(")[0]) or "string"
-            key = "PK" if col.get("primary_key") else ("FK" if col.get("name", "").endswith("_id") else "")
-            lines.append(f"    {ctype.lower()} {col.get('name','field')} {key}".rstrip())
+            raw_cname = str(col.get("name", "field"))
+            cname = re.sub(r"[^A-Za-z0-9_]", "", raw_cname) or "field"
+            key = "PK" if col.get("primary_key") else ("FK" if raw_cname.endswith("_id") else "")
+            lines.append(f"    {ctype.lower()} {cname} {key}".rstrip())
         lines.append("  }")
 
     rels = _relationships(schema)
@@ -295,13 +297,13 @@ def gen_er(schema: Dict[str, Any]) -> str:
         for t in tables[:12]:
             tname = _san(t.get("name", "")).upper()
             for col in (t.get("columns") or []):
-                cn = col.get("name", "")
+                cn = str(col.get("name", ""))
                 if cn.endswith("_id"):
                     ref = _san(cn[:-3]).upper()
                     ref_plural = ref + "S"
                     target = ref if ref in names else (ref_plural if ref_plural in names else None)
                     if target and target != tname:
-                        lines.append(f"  {target} ||--o{{ {tname} : has")
+                        lines.append(f'  {target} ||--o{{ {tname} : "has"')
     return "\n".join(lines)
 
 

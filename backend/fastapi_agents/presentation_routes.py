@@ -69,26 +69,78 @@ router = APIRouter(tags=["presentation"])
 def _extract_pdf_text(pdf_path: str) -> tuple[str, int, list[str]]:
     """Extract full document text (all pages, joined) + page count + the
     per-page text list (needed so the deck can map one slide per PDF page).
-    Tries pdfplumber first, falls back to PyPDF2 — mirrors the platform's
-    existing ingestion path so behaviour is consistent."""
+    Tries pdfplumber first, then pypdf, then PyPDF2."""
     try:
         import pdfplumber
         with pdfplumber.open(pdf_path) as pdf:
             pages = [(p.extract_text() or "").strip() for p in pdf.pages]
             return "\n\n".join(pages), len(pdf.pages), pages
-    except ImportError:
+    except Exception:
         pass
-    import PyPDF2
-    reader = PyPDF2.PdfReader(pdf_path)
-    pages = [(p.extract_text() or "").strip() for p in reader.pages]
-    return "\n\n".join(pages), len(reader.pages), pages
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(pdf_path)
+        pages = [(p.extract_text() or "").strip() for p in reader.pages]
+        return "\n\n".join(pages), len(reader.pages), pages
+    except Exception:
+        pass
+    try:
+        import PyPDF2
+        reader = PyPDF2.PdfReader(pdf_path)
+        pages = [(p.extract_text() or "").strip() for p in reader.pages]
+        return "\n\n".join(pages), len(reader.pages), pages
+    except Exception:
+        pass
+    return "", 0, []
 
 
 _DIAGRAM_KEYWORDS = ("architecture", "workflow", "pipeline", "data flow", "process flow",
                     "sequence", "deployment", "system design", "component diagram")
 
 
-def _pages_to_slides(pages: list[str], project_name: str, doc_title: str) -> list[dict]:
+def _rasterize_pdf_pages(pdf_path: str) -> list[str]:
+    """Rasterise each PDF page to a 150 DPI PNG data URI.
+
+    Priority:
+      1. PyMuPDF (fitz) — fast, accurate, vector-faithful
+      2. pdf2image / Poppler — alternative
+    The PIL rectangle placeholder fallback has been removed; it produced fake
+    coloured boxes, not real page images.
+    """
+    images: list[str] = []
+    # Method 1: PyMuPDF
+    try:
+        import base64
+        import fitz  # PyMuPDF
+        doc = fitz.open(pdf_path)
+        for page in doc:
+            pix = page.get_pixmap(dpi=150)
+            b64 = base64.b64encode(pix.tobytes("png")).decode("utf-8")
+            images.append(f"data:image/png;base64,{b64}")
+        logger.info("[PDFPipeline] Renderer=PyMuPDF  pages=%d", len(images))
+        return images
+    except Exception as exc:
+        logger.warning("[PDFPipeline] PyMuPDF rasterization failed: %s", exc)
+    # Method 2: pdf2image / Poppler
+    try:
+        import base64
+        import io
+        from pdf2image import convert_from_path
+        imgs = convert_from_path(pdf_path, dpi=150)
+        for img in imgs:
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            images.append(f"data:image/png;base64,{b64}")
+        logger.info("[PDFPipeline] Renderer=pdf2image  pages=%d", len(images))
+        return images
+    except Exception as exc:
+        logger.warning("[PDFPipeline] pdf2image rasterization failed: %s", exc)
+    logger.error("[PDFPipeline] ALL rasterizers failed — no page images available")
+    return images
+
+
+def _pages_to_slides(pages: list[str], project_name: str, doc_title: str, page_images: list[str] | None = None) -> list[dict]:
     """One slide per PDF page, in page order — so a 20-page PDF always
     produces exactly 20 slides, letting the user pick a precise page range
     (e.g. "just pages 2-4") in the workspace afterward. Each page's own
@@ -110,7 +162,7 @@ def _pages_to_slides(pages: list[str], project_name: str, doc_title: str) -> lis
         narration = " ".join(body_lines)[:900] or f"This page covers {title}."
         layout = "title" if i == 0 else ("closing" if i == len(pages) - 1 else "items")
 
-        slides.append({
+        slide_dict: dict = {
             "title": title[:90],
             "subtitle": f"Page {i + 1} of {len(pages)}" if i == 0 else "",
             "layout": layout,
@@ -118,12 +170,19 @@ def _pages_to_slides(pages: list[str], project_name: str, doc_title: str) -> lis
             "items": [{"icon": "check", "title": b, "body": ""} for b in bullets],
             "speaker_notes": narration,
             "duration": 28,
-        })
+        }
+        if page_images and i < len(page_images) and page_images[i]:
+            slide_dict["page_image"] = page_images[i]
+            logger.info("[PDFPipeline] Slide %d: page_image attached, len=%d", i + 1, len(page_images[i]))
+        else:
+            logger.warning("[PDFPipeline] Slide %d: NO page_image available", i + 1)
+        slides.append(slide_dict)
     return slides
 
 
 def _understand_document_to_slides(
     full_text: str, project_name: str, page_count: int, pages: list[str] | None = None,
+    page_images: list[str] | None = None,
     *, db=None, project_id: int | None = None,
 ) -> list[dict]:
     """Turn a full document into a narrated slide deck — one slide per PDF
@@ -140,7 +199,7 @@ def _understand_document_to_slides(
             first = first_lines[0].rstrip(":")
             if 8 < len(first) < 140 and not first.endswith("."):
                 doc_title = first
-        slides = _pages_to_slides(pages, project_name, doc_title)
+        slides = _pages_to_slides(pages, project_name, doc_title, page_images=page_images)
         return [_attach_diagram_if_relevant(s) for s in slides]
 
     # Fallback for any caller that only has the joined full_text (no page
@@ -2389,8 +2448,12 @@ Return ONLY the narration text — no JSON, no markdown, just the words to speak
             tmp.write(contents)
             tmp_path = tmp.name
 
+        page_images: list[str] = []
         try:
             full_text, page_count, pdf_pages = _extract_pdf_text(tmp_path)
+            # Rasterize BEFORE deleting the temp file — PyMuPDF needs the file on disk
+            page_images = _rasterize_pdf_pages(tmp_path)
+            logger.info("[PDFPipeline] Rasterized %d page images from PDF (file: %s)", len(page_images), tmp_path)
         finally:
             _os.unlink(tmp_path)
 
@@ -2402,6 +2465,7 @@ Return ONLY the narration text — no JSON, no markdown, just the words to speak
 
         slides = await run_in_threadpool(
             _understand_document_to_slides, full_text, project_name, page_count, pdf_pages,
+            page_images,
             db=db, project_id=project_id,
         )
 

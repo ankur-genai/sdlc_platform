@@ -681,9 +681,9 @@ class PresentationVideoAgent:
 
 
 MOCK_PRESENTATION: dict = {
-    "title": "Banking Portal — SDLC Executive Summary",
+    "title": "Executive Solution Architecture Summary",
     "slides": [
-        {"title": "Project Overview", "content": "Autonomous AI-driven SDLC for a full-stack banking portal.", "speaker_notes": "Introduce the project scope and objectives."},
+        {"title": "Project Overview", "content": "Autonomous AI-driven SDLC platform for enterprise solutions.", "speaker_notes": "Introduce the project scope and objectives."},
         {"title": "Architecture", "content": "React frontend, FastAPI backend, PostgreSQL database. Microservices pattern with JWT auth.", "speaker_notes": "Highlight scalability and security choices."},
         {"title": "Key Features", "content": "User authentication, account management, transaction processing, real-time notifications.", "speaker_notes": "Walk through the primary user journeys."},
         {"title": "Security & Compliance", "content": "OWASP Top 10 mitigated. GDPR-compliant data handling. SOC 2 Type II aligned controls.", "speaker_notes": "Stress the regulatory alignment."},
