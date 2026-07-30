@@ -70,7 +70,7 @@ The JSON must conform to the following schema:
   "traceability_updates": [
     {
       "requirement_id": "ID of added/modified requirement",
-      "business_goal": "Align with banking security standards",
+      "business_goal": "Align with domain security and compliance standards",
       "source": "Requirement Copilot",
       "related_requirements": []
     }

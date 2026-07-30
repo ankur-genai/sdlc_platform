@@ -58,7 +58,7 @@ MOCK_API_DESIGN: dict[str, Any] = {
     "openapi_yaml": """\
 openapi: '3.0.3'
 info:
-  title: Banking Portal API
+  title: Domain Service API
   version: '1.0.0'
 paths:
   /auth/login:
