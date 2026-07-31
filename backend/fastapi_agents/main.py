@@ -62,6 +62,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Respon
 from fastapi.middleware.cors import CORSMiddleware
 from passlib.context import CryptContext
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .models import (
@@ -329,48 +330,57 @@ def _get_project_or_404(db: Session, project_id: int) -> Project:
 # Auth endpoints
 # ===========================================================================
 @app.post("/auth/register", response_model=UserOut, status_code=status.HTTP_201_CREATED, tags=["auth"])
-def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
-    if db.query(User).filter(User.email == payload.email).first():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A user with that email already exists")
+def register(payload: UserCreate, response: Response, db: Session = Depends(get_db)) -> User:
+    email = str(payload.email).strip().lower()
+    role_str = payload.role.value if hasattr(payload.role, "value") else str(payload.role)
+    
+    # If account already exists in database, notify user to sign in
+    existing_user = db.query(User).filter(func.lower(User.email) == email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account already exists for this email! Please sign in instead."
+        )
+
+    # Create new user account
     user = User(
-        email=payload.email,
-        full_name=payload.full_name,
-        role=payload.role.value,
+        email=email,
+        full_name=payload.full_name or email.split("@")[0].capitalize(),
+        role=role_str,
         hashed_password=hash_password(payload.password),
     )
-    # Store selected agents for this user (if provided) as a generated project to tie into existing schema.
-    # For now we log this association and leave persistence to the project/agent pipeline.
     if payload.selected_agents:
-        logging.info("USER_REGISTER_SELECTED_AGENTS email=%s agents=%s", payload.email, payload.selected_agents)
+        logging.info("USER_REGISTER_SELECTED_AGENTS email=%s agents=%s", email, payload.selected_agents)
     db.add(user)
     db.commit()
     db.refresh(user)
+    _set_auth_cookies(response, user.id)
     return user
 
 
 @app.post("/auth/login", response_model=UserOut, tags=["auth"])
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> User:
-    if DEMO_MODE:
-        email = payload.email.strip().lower()
-        user = db.query(User).filter(User.email == email).first()
-        if user is None:
-            user = User(
-                email=email,
-                full_name=email.split("@")[0].capitalize() or "Demo User",
-                role="developer",
-                hashed_password=hash_password(payload.password or "DemoPassword123!"),
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-        _set_auth_cookies(response, user.id, remember=payload.remember_me)
-        return user
+    email = str(payload.email).strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == email).first()
+    
+    # Check if user exists in database
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this email. Please sign up first!"
+        )
 
-    user = db.query(User).filter(User.email == payload.email).first()
-    if user is None or not verify_password(payload.password, user.hashed_password):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
+    # Verify typed password against stored hashed password
+    if not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password. Please try again."
+        )
+
     _set_auth_cookies(response, user.id, remember=payload.remember_me)
     return user
+
+
 
 
 @app.get("/auth/me", response_model=UserOut, tags=["auth"])
