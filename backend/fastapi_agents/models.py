@@ -175,8 +175,6 @@ class AgentName(str, enum.Enum):
 
     BACKEND_AGENT = "Backend Agent"
 
-    DEVELOPMENT_STUDIO = "Development Studio"
-
     CODE_REVIEW_AGENT = "Code Review Agent"
 
     TESTING_AGENT = "Testing Agent"
@@ -200,13 +198,10 @@ class ApprovalStatus(str, enum.Enum):
 
 class ProviderName(str, enum.Enum):
     OPENAI = "openai"
-    AZURE_OPENAI = "azure_openai"
+    ANTHROPIC = "anthropic"
     GEMINI = "gemini"
     GROQ = "groq"
-    OPENROUTER = "openrouter"
-    VLLM = "vllm"
-    LMSTUDIO = "lmstudio"
-    ANTHROPIC = "anthropic"
+    AZURE_OPENAI = "azure_openai"
     AWS_BEDROCK = "aws_bedrock"
     OLLAMA = "ollama"
     D_ID = "d_id"  # avatar video credential, not an LLM — see agents/avatar_provider.py
@@ -504,9 +499,9 @@ class ProjectCreate(BaseModel):
     execution_mode: ExecutionMode
     deliverables: list[DeliverableType] = Field(default_factory=list)
     build_type: BuildType
-    providers: dict[str, Any] = Field(
+    providers: dict[ProviderName, str] = Field(
         default_factory=dict,
-        description="provider name -> raw API key or dict config {api_key, base_url, model, api_version}",
+        description="provider name -> raw API key; encrypted before storage, never echoed back",
     )
     description: str | None = None
     manual_stages: list[str] = Field(default_factory=list)
