@@ -146,9 +146,18 @@ def _extract_document_text(path) -> str:
     suffix = p.suffix.lower()
     try:
         if suffix == ".pdf":
-            import pdfplumber
-            with pdfplumber.open(str(p)) as pdf:
-                return "\n\n".join((page.extract_text() or "") for page in pdf.pages)
+            try:
+                import pdfplumber
+                with pdfplumber.open(str(p)) as pdf:
+                    return "\n\n".join((page.extract_text() or "") for page in pdf.pages)
+            except Exception:
+                pass
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(str(p))
+                return "\n\n".join((page.extract_text() or "") for page in reader.pages)
+            except Exception:
+                pass
         if suffix in (".docx", ".doc"):
             import docx  # python-docx
             d = docx.Document(str(p))
@@ -176,6 +185,12 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def strip_api_prefix(request: Request, call_next):
+    if request.url.path.startswith("/api/"):
+        request.scope["path"] = request.url.path[4:]
+    return await call_next(request)
 
 
 @app.on_event("startup")
@@ -335,8 +350,19 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
 
 @app.post("/auth/login", response_model=UserOut, tags=["auth"])
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> User:
-    if DEMO_MODE and payload.email.lower() == DEMO_EMAIL:
-        user = _get_or_create_demo_user(db)
+    if DEMO_MODE:
+        email = payload.email.strip().lower()
+        user = db.query(User).filter(User.email == email).first()
+        if user is None:
+            user = User(
+                email=email,
+                full_name=email.split("@")[0].capitalize() or "Demo User",
+                role="developer",
+                hashed_password=hash_password(payload.password or "DemoPassword123!"),
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
         _set_auth_cookies(response, user.id, remember=payload.remember_me)
         return user
 
@@ -422,12 +448,28 @@ def create_project(
             status=RunStatus.PENDING.value,
         ))
 
-    for provider_name, raw_key in payload.providers.items():
+    for provider_key, provider_val in payload.providers.items():
+        p_name = provider_key.value if hasattr(provider_key, 'value') else str(provider_key)
+        raw_key = ""
+        base_url = None
+        model = None
+        api_version = None
+        if isinstance(provider_val, dict):
+            raw_key = provider_val.get("api_key") or provider_val.get("apiKey") or ""
+            base_url = provider_val.get("base_url") or provider_val.get("endpoint") or provider_val.get("baseUrl") or provider_val.get("server_url") or None
+            model = provider_val.get("model") or provider_val.get("deployment_name") or provider_val.get("model_name") or None
+            api_version = provider_val.get("api_version") or provider_val.get("apiVersion") or None
+        else:
+            raw_key = str(provider_val)
+
         db.add(ProviderConfiguration(
             project_id=project.id,
-            provider_name=provider_name.value,
+            provider_name=p_name,
             enabled=True,
-            encrypted_key=encrypt_secret(raw_key),
+            encrypted_key=encrypt_secret(raw_key) if raw_key else "",
+            base_url=base_url,
+            model=model,
+            api_version=api_version,
         ))
 
     db.add(TimelineEvent(project_id=project.id, stage="Project Created", status=RunStatus.COMPLETED.value))
@@ -784,231 +826,6 @@ def delete_project(
         "status": "deleted",
         "message": f"Project '{project.name}' and all related records and files deleted successfully",
     }
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. INITIAL REQUIREMENT GENERATION ENDPOINT
-# ─────────────────────────────────────────────────────────────────────────────
-@router.post("/generate/requirements", tags=["generate"])
-async def generate_requirements_endpoint(
-    payload: dict,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> dict:
-    """Generates initial project requirements using RequirementAgent."""
-    project_id = payload.get("project_id")
-    if not project_id:
-        raise HTTPException(422, "project_id required")
-
-    from .agents.requirements.agent import RequirementAgent
-    agent = RequirementAgent(db, project_id)
-    result = agent.run(project_id)
-    return result
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. REQUIREMENT COPILOT PROMPT ENDPOINT
-# ─────────────────────────────────────────────────────────────────────────────
-@router.post("/generate/requirements-copilot", tags=["generate"])
-async def requirements_copilot_endpoint(
-    payload: dict,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> dict:
-    """Propose additions, modifications, and deletions to requirements."""
-    project_id = payload.get("project_id")
-    prompt = payload.get("prompt")
-    if not project_id or not prompt:
-        raise HTTPException(422, "project_id and prompt are required")
-
-    req_art = db.query(GeneratedArtifact).filter(
-        GeneratedArtifact.project_id == project_id,
-        GeneratedArtifact.artifact_type == "requirements_doc"
-    ).order_by(GeneratedArtifact.id.desc()).first()
-
-    if not req_art:
-        raise HTTPException(404, "No requirements artifact found. Please generate requirements first.")
-    current_doc = json.loads(req_art.content)
-
-    from .agents.requirements.copilot_agent import RequirementCopilotAgent
-    agent = RequirementCopilotAgent(db, project_id)
-    proposed = agent.process_prompt(current_doc, prompt)
-    return proposed
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. APPLY COPILOT MUTATIONS ENDPOINT
-# ─────────────────────────────────────────────────────────────────────────────
-@router.post("/generate/requirements-apply", tags=["generate"])
-async def requirements_apply_endpoint(
-    payload: dict,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> dict:
-    """Apply approved proposed mutations to the requirements workspace."""
-    project_id = payload.get("project_id")
-    if not project_id:
-        raise HTTPException(422, "project_id required")
-
-    req_art = db.query(GeneratedArtifact).filter(
-        GeneratedArtifact.project_id == project_id,
-        GeneratedArtifact.artifact_type == "requirements_doc"
-    ).order_by(GeneratedArtifact.id.desc()).first()
-
-    if not req_art:
-        raise HTTPException(404, "No requirements artifact found.")
-    req_data = json.loads(req_art.content)
-
-    added = payload.get("added", [])
-    modified = payload.get("modified", [])
-    deleted = payload.get("deleted", [])
-
-    requirements = req_data.get("requirements", [])
-    req_map = {r.get("id"): r for r in requirements if isinstance(r, dict)}
-
-    # Apply Deletions
-    for del_id in deleted:
-        if del_id in req_map:
-            del req_map[del_id]
-
-    # Apply Modifications
-    for mod_item in modified:
-        m_id = mod_item.get("id")
-        if m_id in req_map:
-            for k, v in mod_item.items():
-                req_map[m_id][k] = v
-
-    # Apply Additions
-    from .requirement_enricher import enrich_requirements
-    enriched_added = enrich_requirements(added, {}, {})
-    for item in enriched_added:
-        item_id = item.get("id")
-        req_map[item_id] = item
-
-    req_data["requirements"] = list(req_map.values())
-
-    # Update Traceability Matrix
-    traceability = req_data.get("traceability", [])
-    trace_map = {t.get("requirement_id"): t for t in traceability if isinstance(t, dict)}
-    for del_id in deleted:
-        if del_id in trace_map:
-            del trace_map[del_id]
-    for item in added:
-        item_id = item.get("id")
-        if item_id not in trace_map:
-            trace_map[item_id] = {
-                "requirement_id": item_id,
-                "business_goal": "Align with enterprise security & domain controls.",
-                "source": "Requirement Copilot",
-                "related_requirements": []
-            }
-    req_data["traceability"] = list(trace_map.values())
-
-    # Persist updated artifact to DB
-    req_art.content = json.dumps(req_data)
-    db.add(req_art)
-
-    # Flag PDF status as out_of_date
-    status_art = db.query(GeneratedArtifact).filter(
-        GeneratedArtifact.project_id == project_id,
-        GeneratedArtifact.artifact_type == "pdf_status"
-    ).first()
-    if status_art:
-        status_art.content = json.dumps({"status": "out_of_date"})
-        db.add(status_art)
-    else:
-        db.add(GeneratedArtifact(project_id=project_id, artifact_type="pdf_status", content=json.dumps({"status": "out_of_date"})))
-
-    db.commit()
-    return {"status": "ok", "project_id": project_id, "count": len(req_data["requirements"])}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. GENERATE SRS PDF ENDPOINT
-# ─────────────────────────────────────────────────────────────────────────────
-@router.get("/generate/srs-pdf", tags=["generate"])
-@router.post("/generate/srs-pdf", tags=["generate"])
-def generate_srs_pdf_endpoint(
-    project_id: Optional[int] = Query(None, alias="projectId"),
-    payload: Optional[dict] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Generates an 18-page IEEE 830 SRS PDF using ReportLab engine."""
-    pid = project_id or (payload.get("project_id") if payload else None)
-    if not pid:
-        raise HTTPException(422, "project_id required")
-
-    proj = db.query(Project).filter(Project.id == pid).first()
-    if not proj:
-        raise HTTPException(404, "Project not found")
-
-    from .pdf_generator import generate_srs_pdf
-    pdf_buf = generate_srs_pdf(pid, db)
-
-    # Mark PDF status as synchronized upon generation
-    status_art = db.query(GeneratedArtifact).filter(
-        GeneratedArtifact.project_id == pid,
-        GeneratedArtifact.artifact_type == "pdf_status"
-    ).first()
-    if status_art:
-        status_art.content = json.dumps({"status": "synchronized"})
-        db.add(status_art)
-    else:
-        db.add(GeneratedArtifact(project_id=pid, artifact_type="pdf_status", content=json.dumps({"status": "synchronized"})))
-    db.commit()
-
-    safe_name = "".join(c if c.isalnum() else "_" for c in proj.name or "Project")
-    filename = f"{safe_name}_SRS.pdf"
-    return StreamingResponse(
-        pdf_buf,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. GET / POST PDF STATUS ENDPOINTS
-# ─────────────────────────────────────────────────────────────────────────────
-@router.get("/projects/{project_id}/pdf-status", tags=["projects"])
-def get_pdf_status(
-    project_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Fetch current PDF sync status ('synchronized' vs 'out_of_date')."""
-    status_art = db.query(GeneratedArtifact).filter(
-        GeneratedArtifact.project_id == project_id,
-        GeneratedArtifact.artifact_type == "pdf_status"
-    ).first()
-    if status_art:
-        try:
-            data = json.loads(status_art.content)
-            return {"project_id": project_id, "status": data.get("status", "synchronized")}
-        except Exception:
-            return {"project_id": project_id, "status": "synchronized"}
-    return {"project_id": project_id, "status": "synchronized"}
-
-
-@router.post("/projects/{project_id}/pdf-status", tags=["projects"])
-def update_pdf_status(
-    project_id: int,
-    payload: dict,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Manually update PDF sync status."""
-    new_status = payload.get("status", "synchronized")
-    status_art = db.query(GeneratedArtifact).filter(
-        GeneratedArtifact.project_id == project_id,
-        GeneratedArtifact.artifact_type == "pdf_status"
-    ).first()
-    if status_art:
-        status_art.content = json.dumps({"status": new_status})
-        db.add(status_art)
-    else:
-        db.add(GeneratedArtifact(project_id=project_id, artifact_type="pdf_status", content=json.dumps({"status": new_status})))
-    db.commit()
-    return {"project_id": project_id, "status": new_status}    
 
 
 from .main_extension import router as ext_router
