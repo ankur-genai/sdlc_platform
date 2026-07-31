@@ -41,6 +41,12 @@ storage/
 .env.*
 !.env.example
 
+# Documents & Excel Reports
+*.xlsx
+*.xls
+*.docx
+*.pptx
+
 # Scratch and Temporary Artifacts
 scratch/
 backend/scratch/
