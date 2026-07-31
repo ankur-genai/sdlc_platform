@@ -185,7 +185,7 @@ export function RequirementsWorkspace() {
     const fetchPdfUploadStatus = async () => {
       if (!projectId) return;
       try {
-        const res = await fastApiRequest(`/projects/${projectId}/copilot-pdf-status?workspace_type=requirements`, { method: 'GET' });
+        const res = await fastApiRequest<{ uploaded: boolean; file_name: string; uploaded_at: string }>(`/projects/${projectId}/copilot-pdf-status?workspace_type=requirements`, { method: 'GET' });
         if (res && res.uploaded) {
           setUploadedPdfInfo({ filename: res.file_name, uploadedAt: res.uploaded_at });
         } else {
@@ -429,7 +429,7 @@ export function RequirementsWorkspace() {
     setChatHistory(prev => [...prev, userMsg]);
 
     try {
-      const response = await fastApiRequest('/generate/requirements-copilot', {
+      const response = await fastApiRequest<any>('/generate/requirements-copilot', {
         method: 'POST',
         body: {
           project_id: Number(projectId),
@@ -509,7 +509,7 @@ export function RequirementsWorkspace() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-extrabold text-text-primary tracking-tight">Requirements Workspace</h1>
-            <ApprovalBadge status={approvalStatus} artifactType="requirements_doc" />
+            <ApprovalBadge status={approvalStatus} />
             <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border ${
               pdfStatus === 'synchronized' 
                 ? 'bg-status-success/15 text-status-success border-status-success/30' 
